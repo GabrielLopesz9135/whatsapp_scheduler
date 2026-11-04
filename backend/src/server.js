@@ -3,7 +3,6 @@ const app = require('./app');
 const env = require('./config/env');
 const { connectDatabase, disconnectDatabase } = require('./config/database');
 const { initSocket } = require('./config/socket');
-const { initWhatsApp } = require('./services/whatsappService');
 
 async function bootstrap() {
   try {
@@ -22,9 +21,6 @@ async function bootstrap() {
       console.log(`🌐 [Server] API: http://localhost:${env.PORT}/api`);
       console.log(`⚡ [Server] WebSocket pronto para conexões.`);
     });
-
-    // 5. Inicializa o cliente WhatsApp com Baileys
-    await initWhatsApp();
 
     // Tratamento de desligamento gracioso (Graceful Shutdown)
     const gracefulShutdown = async (signal) => {

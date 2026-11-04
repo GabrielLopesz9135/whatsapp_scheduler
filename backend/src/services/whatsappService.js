@@ -1,151 +1,157 @@
-const path = require('path');
-const {
-  default: makeWASocket,
-  useMultiFileAuthState,
-  DisconnectReason,
-  fetchLatestBaileysVersion,
-} = require('@whiskeysockets/baileys');
-const qrcode = require('qrcode-terminal');
-const pino = require('pino');
+const axios = require('axios');
+const env = require('../config/env');
 
-let sock = null;
-
-const AUTH_FOLDER = path.resolve(__dirname, '../../auth_info_baileys');
+const META_GRAPH_URL = 'https://graph.facebook.com/v21.0';
 
 /**
- * Dispara uma mensagem de texto simples para um contato do WhatsApp.
- * @param {string} jidOrPhone - Número de telefone (ex: "5511999998888") ou JID completo
- * @param {string} text - Conteúdo da mensagem
+ * Normaliza o número de telefone do destinatário para o formato aceito pela Meta (apenas dígitos com DDI 55).
+ * @param {string} phone
+ * @returns {string}
  */
-async function sendText(jidOrPhone, text) {
-  if (!sock) {
-    console.warn('⚠️ [WhatsApp] Não foi possível enviar mensagem: cliente Baileys não conectado.');
-    return;
+function formatBrPhone(phone) {
+  if (!phone) return '';
+  let clean = String(phone).replace(/\D/g, '');
+
+  // Se não possuir o DDI 55 e tiver 10 ou 11 dígitos (DDD + número), adiciona o DDI do Brasil
+  if (!clean.startsWith('55') && (clean.length === 10 || clean.length === 11)) {
+    clean = `55${clean}`;
   }
 
-  // Garante o formato do JID
-  const jid = jidOrPhone.includes('@') ? jidOrPhone : `${jidOrPhone}@s.whatsapp.net`;
+  return clean;
+}
+
+/**
+ * Envia uma requisição genérica para a Meta WhatsApp Cloud API.
+ * @param {Object} payload
+ */
+async function sendToMeta(payload) {
+  const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID || env.WHATSAPP_PHONE_NUMBER_ID;
+  const token = process.env.WHATSAPP_API_TOKEN || env.WHATSAPP_API_TOKEN;
+
+  if (!phoneId || !token) {
+    console.warn('⚠️ [WhatsApp Service] WHATSAPP_PHONE_NUMBER_ID ou WHATSAPP_API_TOKEN não definidos.');
+    return { data: { success: false, error: 'Credenciais ausentes' } };
+  }
+
+  const url = `${META_GRAPH_URL}/${phoneId}/messages`;
 
   try {
-    await sock.sendMessage(jid, { text });
+    const response = await axios.post(url, payload, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      timeout: 10000,
+    });
+    return response.data;
   } catch (error) {
-    console.error(`❌ [WhatsApp] Erro ao enviar mensagem para ${jid}:`, error.message);
+    const errorDetails = error.response?.data || error.message;
+    console.error('❌ [WhatsApp Service] Erro ao enviar mensagem via Meta API:', JSON.stringify(errorDetails, null, 2));
+    return { error: errorDetails };
   }
 }
 
 /**
- * Inicializa a conexão com o WhatsApp utilizando a biblioteca @whiskeysockets/baileys.
- * Gerencia autenticação multi-arquivo, QR Code no terminal e reconexão automática.
+ * Dispara uma mensagem simples de texto.
+ * @param {string} to - Número de telefone do destinatário
+ * @param {string} bodyText - Conteúdo da mensagem
  */
-async function initWhatsApp() {
-  try {
-    console.log('🤖 [WhatsApp/Baileys] Inicializando cliente Baileys...');
+async function sendText(to, bodyText) {
+  const payload = {
+    messaging_product: 'whatsapp',
+    recipient_type: 'individual',
+    to: formatBrPhone(to),
+    type: 'text',
+    text: {
+      preview_url: false,
+      body: bodyText,
+    },
+  };
 
-    // Carrega o estado de autenticação em arquivos locais
-    const { state, saveCreds } = await useMultiFileAuthState(AUTH_FOLDER);
-    const { version, isLatest } = await fetchLatestBaileysVersion().catch(() => ({
-      version: [2, 3000, 1015901307],
-      isLatest: true,
+  return sendToMeta(payload);
+}
+
+/**
+ * Dispara uma mensagem interativa com lista de opções (Interactive List Message).
+ * @param {string} to - Número do destinatário
+ * @param {string} bodyText - Texto explicativo no corpo
+ * @param {string} buttonText - Rótulo do botão que abre a lista (máx 20 caracteres)
+ * @param {Array<Object>} sectionsOrItems - Array de seções { title, rows } ou array direto de rows [{ id, title, description }]
+ */
+async function sendInteractiveList(to, bodyText, buttonText, sectionsOrItems = []) {
+  // Se receber um array direto de itens, formata em uma seção padrão
+  let sections = [];
+  if (sectionsOrItems.length > 0 && sectionsOrItems[0].rows) {
+    sections = sectionsOrItems;
+  } else {
+    const rows = sectionsOrItems.slice(0, 10).map((item) => ({
+      id: String(item.id),
+      title: String(item.title).substring(0, 24), // Limite de 24 caracteres por título na Meta
+      description: item.description ? String(item.description).substring(0, 72) : undefined,
     }));
 
-    console.log(`📱 [WhatsApp/Baileys] Versão do WhatsApp Web: ${version.join('.')} (Última: ${isLatest})`);
-
-    // Cria o socket do Baileys com logger silencioso para manter o terminal limpo
-    sock = makeWASocket({
-      version,
-      logger: pino({ level: 'silent' }),
-      printQRInTerminal: false, // Gerenciamos manualmente com qrcode-terminal
-      auth: state,
-      browser: ['AutoScheduler', 'Chrome', '1.0.0'],
-      syncFullHistory: false,
-    });
-
-    // Salva credenciais atualizadas
-    sock.ev.on('creds.update', saveCreds);
-
-    // Gerencia eventos de conexão (QR code e status)
-    sock.ev.on('connection.update', async (update) => {
-      const { connection, lastDisconnect, qr } = update;
-
-      if (qr) {
-        console.log('\n📲 [WhatsApp] Escaneie o QR Code abaixo com seu WhatsApp para autenticar:\n');
-        qrcode.generate(qr, { small: true });
-        console.log('💡 Aguardando leitura do QR Code pelo celular...\n');
-      }
-
-      if (connection === 'close') {
-        const statusCode = lastDisconnect?.error?.output?.statusCode;
-        const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-
-        console.log(
-          `🔌 [WhatsApp] Conexão fechada. Código: ${statusCode || 'N/A'}. Motivo: ${
-            lastDisconnect?.error?.message || lastDisconnect?.error || 'Desconhecido'
-          }. Tentando reconectar: ${shouldReconnect}`
-        );
-
-        if (shouldReconnect) {
-          console.log('🔄 [WhatsApp] Reconectando em 5 segundos...');
-          setTimeout(() => initWhatsApp(), 5000);
-        } else {
-          console.log('🔒 [WhatsApp] Dispositivo deslogado. Apague a pasta auth_info_baileys para ler novo QR Code.');
-        }
-      } else if (connection === 'open') {
-        console.log('✅ [WhatsApp] Conectado com sucesso via Baileys! Bot pronto para responder.');
-      }
-    });
-
-    // Escuta novas mensagens recebidas
-    sock.ev.on('messages.upsert', async ({ messages, type }) => {
-      // Processa apenas notificações de novas mensagens
-      if (type !== 'notify') return;
-
-      for (const msg of messages) {
-        // Ignora mensagens enviadas pelo próprio bot
-        if (msg.key.fromMe) continue;
-
-        // Trata remoteJid e remoteJidAlt
-        const rawJid = msg.key.remoteJidAlt || msg.key.remoteJid || '';
-
-        // Ignora mensagens de grupos (@g.us) e atualizações de status
-        if (!rawJid || rawJid.endsWith('@g.us') || rawJid === 'status@broadcast') {
-          continue;
-        }
-
-        // Extrai o telefone limpo sem o sufixo @s.whatsapp.net
-        const phone = rawJid.replace('@s.whatsapp.net', '');
-        const customerName = msg.pushName || 'Cliente';
-
-        // Extrai o texto da mensagem (conversa direta ou mensagem estendida)
-        const text =
-          msg.message?.conversation ||
-          msg.message?.extendedTextMessage?.text ||
-          '';
-
-        if (!text.trim()) continue;
-
-        console.log(`📩 [WhatsApp Baileys] Mensagem de ${phone} (${customerName}): "${text.trim()}"`);
-
-        // Encaminha para o motor da máquina de estados (carregado sob demanda para evitar dependência circular)
-        try {
-          const botFlowService = require('./botFlowService');
-          await botFlowService.handleIncomingMessage({
-            phone,
-            customerName,
-            text: text.trim(),
-            jid: rawJid,
-          });
-        } catch (botErr) {
-          console.error('💥 [WhatsApp] Erro no botFlowService ao processar mensagem:', botErr);
-        }
-      }
-    });
-  } catch (err) {
-    console.error('❌ [WhatsApp] Falha ao inicializar Baileys:', err);
-    setTimeout(() => initWhatsApp(), 5000);
+    sections = [
+      {
+        title: 'Selecione uma opção',
+        rows,
+      },
+    ];
   }
+
+  const payload = {
+    messaging_product: 'whatsapp',
+    recipient_type: 'individual',
+    to: formatBrPhone(to),
+    type: 'interactive',
+    interactive: {
+      type: 'list',
+      body: { text: bodyText },
+      action: {
+        button: String(buttonText || 'Ver Opções').substring(0, 20),
+        sections,
+      },
+    },
+  };
+
+  return sendToMeta(payload);
+}
+
+/**
+ * Dispara uma mensagem interativa com botões de resposta rápida (Reply Buttons).
+ * Limite da Meta: até 3 botões por mensagem.
+ * @param {string} to - Número do destinatário
+ * @param {string} bodyText - Texto explicativo no corpo
+ * @param {Array<{ id: string, title: string }>} buttons - Lista de até 3 botões
+ */
+async function sendInteractiveButtons(to, bodyText, buttons = []) {
+  const metaButtons = buttons.slice(0, 3).map((btn) => ({
+    type: 'reply',
+    reply: {
+      id: String(btn.id),
+      title: String(btn.title).substring(0, 20),
+    },
+  }));
+
+  const payload = {
+    messaging_product: 'whatsapp',
+    recipient_type: 'individual',
+    to: formatBrPhone(to),
+    type: 'interactive',
+    interactive: {
+      type: 'button',
+      body: { text: bodyText },
+      action: {
+        buttons: metaButtons,
+      },
+    },
+  };
+
+  return sendToMeta(payload);
 }
 
 module.exports = {
-  initWhatsApp,
+  formatBrPhone,
   sendText,
+  sendInteractiveList,
+  sendInteractiveButtons,
 };

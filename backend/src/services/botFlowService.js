@@ -1,18 +1,10 @@
 const ChatSession = require('../models/ChatSession');
 const Service = require('../models/Service');
+const User = require('../models/User');
 const slotService = require('./slotService');
 const appointmentService = require('./appointmentService');
+const whatsappService = require('./whatsappService');
 const { ConflictError } = require('../middlewares/errorHandler');
-
-/**
- * Envia mensagem pelo WhatsApp resolvendo o serviço sob demanda para evitar dependência circular.
- * @param {string} recipient - JID ou telefone
- * @param {string} text - Conteúdo da mensagem
- */
-async function sendWhatsApp(recipient, text) {
-  const { sendText } = require('./whatsappService');
-  return sendText(recipient, text);
-}
 
 /**
  * Converte data YYYY-MM-DD para string legível brasileira (DD/MM/YYYY).
@@ -28,22 +20,22 @@ function formatDateBR(dateString) {
 /**
  * Gera os próximos N dias úteis (Segunda a Sábado, excluindo Domingos).
  * @param {number} count
- * @returns {Array<{ dateString: string, displayLabel: string }>}
+ * @returns {Array<{ dateString: string, displayTitle: string, description: string }>}
  */
 function getNextBusinessDays(count = 5) {
   const days = [];
   const cursor = new Date();
 
-  // Começa a partir de amanhã para garantir agendamentos futuros
+  // Começa a partir de amanhã para garantir datas futuras
   cursor.setDate(cursor.getDate() + 1);
 
   const dayNames = [
-    'Domingo',
-    'Segunda-feira',
-    'Terça-feira',
-    'Quarta-feira',
-    'Quinta-feira',
-    'Sexta-feira',
+    'Dom',
+    'Segunda',
+    'Terça',
+    'Quarta',
+    'Quinta',
+    'Sexta',
     'Sábado',
   ];
 
@@ -54,11 +46,13 @@ function getNextBusinessDays(count = 5) {
       const month = String(cursor.getMonth() + 1).padStart(2, '0');
       const day = String(cursor.getDate()).padStart(2, '0');
       const dateString = `${year}-${month}-${day}`;
-      const displayLabel = `${day}/${month}/${year} (${dayNames[dayOfWeek]})`;
+
+      const displayTitle = `${day}/${month} (${dayNames[dayOfWeek]})`.substring(0, 24);
 
       days.push({
         dateString,
-        displayLabel,
+        displayTitle,
+        description: `Agendar para ${day}/${month}/${year}`,
       });
     }
     cursor.setDate(cursor.getDate() + 1);
@@ -68,327 +62,410 @@ function getNextBusinessDays(count = 5) {
 }
 
 /**
- * Máquina de estados conversacional do WhatsApp com menus em texto numerado.
- * Processa mensagens recebidas pelo Baileys.
- * 
- * @param {Object} params
- * @param {string} params.phone - Telefone limpo (ex: "5511999998888")
- * @param {string} params.customerName - Nome do cliente
- * @param {string} params.text - Mensagem de texto enviada pelo cliente
- * @param {string} params.jid - JID completo do WhatsApp
+ * Formata os procedimentos/serviços para a lista interativa da WhatsApp Cloud API respeitando os limites:
+ * - title: Máximo de 24 caracteres (limite obrigatório da Meta).
+ * - description: Máximo de 72 caracteres (se o título for longo, inclui o nome completo aqui).
+ * @param {Array<Object>} services
+ * @returns {Array<{ id: string, title: string, description: string }>}
  */
-async function handleIncomingMessage({ phone, customerName, text, jid }) {
-  const recipient = jid || phone;
-  const normalizedText = text.trim();
+function buildServiceRows(services) {
+  return services.slice(0, 10).map((srv) => {
+    const priceStr = `R$ ${srv.price.toFixed(2).replace('.', ',')}`;
+    const baseInfo = `${srv.durationMinutes} min • ${priceStr}`;
 
-  // Busca ou inicializa a sessão do cliente no MongoDB
-  let session = await ChatSession.findOne({ phone });
-  if (!session) {
-    session = await ChatSession.create({
-      phone,
-      step: 'IDLE',
-      tempData: { customerName },
-    });
-  }
+    let title = srv.name.trim();
+    let description = baseInfo;
 
-  // Permite digitar "0" ou "cancelar" a qualquer momento para reiniciar o atendimento
-  const isResetCommand =
-    normalizedText === '0' ||
-    /^(cancelar|sair|menu|reiniciar|inicio|início|voltar)$/i.test(normalizedText);
-
-  if (isResetCommand) {
-    session.step = 'IDLE';
-    session.tempData = { customerName };
-    await session.save();
-
-    await sendWhatsApp(recipient, '🔄 Atendimento reiniciado com sucesso!\n');
-    // Prossegue imediatamente para o passo IDLE exibindo o menu inicial
-  }
-
-  // Máquina de Estados (State Machine)
-  switch (session.step) {
-    case 'IDLE': {
-      const activeServices = await Service.find({ active: true }).sort({ name: 1 });
-
-      if (activeServices.length === 0) {
-        await sendWhatsApp(
-          recipient,
-          `Olá, *${customerName}*! No momento não possuímos serviços disponíveis para agendamento. Por favor, tente novamente mais tarde.`
-        );
-        return;
-      }
-
-      // Salva os IDs dos serviços para mapear o número digitado
-      session.tempData.serviceOptions = activeServices.map((s) => s._id.toString());
-      session.tempData.customerName = customerName;
-      session.step = 'AWAITING_SERVICE';
-      await session.save();
-
-      let menuText = `Olá, *${customerName}*! 👋\nSeja bem-vindo ao nosso sistema de agendamento.\n\nPor favor, escolha o serviço desejado digitando o *número* correspondente:\n\n`;
-
-      activeServices.forEach((srv, index) => {
-        const priceFormatted = srv.price.toFixed(2).replace('.', ',');
-        menuText += `*${index + 1}* - ${srv.name} (${srv.durationMinutes} min) - R$ ${priceFormatted}\n`;
-      });
-
-      menuText += `\n_Digite 0 a qualquer momento para reiniciar o atendimento._`;
-
-      await sendWhatsApp(recipient, menuText);
-      break;
+    // Se o nome do serviço ultrapassar os 24 caracteres exigidos pela Meta:
+    if (title.length > 24) {
+      // Abreviação elegante com reticências (ex: "Clareamento em Cons...")
+      title = `${title.substring(0, 21).trim()}...`;
+      // No campo description (que suporta até 72 caracteres), exibe o nome completo + duração e preço
+      const fullDesc = `${srv.name} • ${baseInfo}`;
+      description =
+        fullDesc.length <= 72
+          ? fullDesc
+          : `${srv.name.substring(0, 72 - baseInfo.length - 3).trim()}... • ${baseInfo}`;
     }
 
-    case 'AWAITING_SERVICE': {
-      const serviceIndex = parseInt(normalizedText, 10);
-      const options = session.tempData.serviceOptions || [];
+    return {
+      id: srv._id.toString(),
+      title,
+      description,
+    };
+  });
+}
 
-      if (isNaN(serviceIndex) || serviceIndex < 1 || serviceIndex > options.length) {
-        const activeServices = await Service.find({ active: true }).sort({ name: 1 });
-        let retryMsg = `⚠️ Opção inválida! Por favor, digite o número correspondente ao serviço desejado:\n\n`;
+/**
+ * Processa mensagens recebidas pelo Webhook oficial da Meta WhatsApp Cloud API.
+ * Extrai dados do cliente e gerencia a máquina de estados (ChatSession).
+ * 
+ * @param {Object} webhookPayload - Payload bruto recebido da Meta
+ */
+async function handleIncomingMessage(webhookPayload) {
+  try {
+    const entry = webhookPayload?.entry?.[0];
+    const change = entry?.changes?.[0];
+    const value = change?.value;
 
-        activeServices.forEach((srv, index) => {
-          const priceFormatted = srv.price.toFixed(2).replace('.', ',');
-          retryMsg += `*${index + 1}* - ${srv.name} (${srv.durationMinutes} min) - R$ ${priceFormatted}\n`;
-        });
-        retryMsg += `\n_Digite 0 para reiniciar._`;
-
-        await sendWhatsApp(recipient, retryMsg);
-        return;
-      }
-
-      const selectedServiceId = options[serviceIndex - 1];
-      const service = await Service.findById(selectedServiceId);
-
-      if (!service || !service.active) {
-        session.step = 'IDLE';
-        await session.save();
-        await sendWhatsApp(
-          recipient,
-          '⚠️ O serviço selecionado não está mais disponível. Reiniciando atendimento...'
-        );
-        return;
-      }
-
-      // Salva o serviço escolhido e gera as datas
-      session.tempData.selectedServiceId = service._id;
-      const nextDays = getNextBusinessDays(5);
-      session.tempData.dateOptions = nextDays.map((d) => d.dateString);
-      session.step = 'AWAITING_DATE';
-      await session.save();
-
-      let dateMsg = `Ótimo! Você escolheu *${service.name}* (${service.durationMinutes} min).\n\nPara qual data gostaria de agendar? Digite o *número* da opção:\n\n`;
-
-      nextDays.forEach((d, index) => {
-        dateMsg += `*${index + 1}* - ${d.displayLabel}\n`;
-      });
-
-      dateMsg += `\n_Digite 0 para reiniciar._`;
-
-      await sendWhatsApp(recipient, dateMsg);
-      break;
+    // Se o webhook for notificação de status de entrega/leitura (statuses), ignora sem erro
+    if (value?.statuses && (!value?.messages || value.messages.length === 0)) {
+      return;
     }
 
-    case 'AWAITING_DATE': {
-      const dateIndex = parseInt(normalizedText, 10);
-      const dateOptions = session.tempData.dateOptions || [];
+    const messages = value?.messages;
+    if (!messages || messages.length === 0) {
+      return;
+    }
 
-      if (isNaN(dateIndex) || dateIndex < 1 || dateIndex > dateOptions.length) {
-        let retryMsg = `⚠️ Opção de data inválida! Por favor, digite o número correspondente à data desejada:\n\n`;
+    const message = messages[0];
+    const from = message.from; // Número do cliente
+    const customerName = value?.contacts?.[0]?.profile?.name || 'Cliente';
 
-        const nextDays = getNextBusinessDays(5);
-        nextDays.forEach((d, index) => {
-          retryMsg += `*${index + 1}* - ${d.displayLabel}\n`;
-        });
-        retryMsg += `\n_Digite 0 para reiniciar._`;
+    // Extrai a escolha do usuário (texto simples, item de lista clicada ou botão de resposta)
+    let userChoiceId = null;
+    let userText = '';
 
-        await sendWhatsApp(recipient, retryMsg);
-        return;
+    if (message.type === 'text') {
+      userText = message.text?.body?.trim() || '';
+      userChoiceId = userText;
+    } else if (message.type === 'interactive') {
+      if (message.interactive.type === 'list_reply') {
+        userChoiceId = message.interactive.list_reply.id;
+        userText = message.interactive.list_reply.title || '';
+      } else if (message.interactive.type === 'button_reply') {
+        userChoiceId = message.interactive.button_reply.id;
+        userText = message.interactive.button_reply.title || '';
       }
+    }
 
-      const chosenDate = dateOptions[dateIndex - 1];
+    console.log(`📩 [WhatsApp Cloud API] De: ${from} (${customerName}) | Escolha: "${userChoiceId}" | Texto: "${userText}"`);
 
-      // Consulta slots livres através do slotService
-      const slots = await slotService.getAvailableSlots(
-        chosenDate,
-        session.tempData.selectedServiceId
+    // Busca ou inicializa a sessão da conversa no MongoDB
+    let session = await ChatSession.findOne({ phone: from });
+    if (!session) {
+      session = await ChatSession.create({
+        phone: from,
+        step: 'IDLE',
+        tempData: { customerName },
+      });
+    }
+
+    // Comando de cancelamento ou reinício a qualquer momento
+    const isResetCommand = /^(cancelar|sair|menu|reiniciar|inicio|início|voltar|0)$/i.test(userText);
+    if (isResetCommand) {
+      session.step = 'IDLE';
+      session.tempData = { customerName };
+      await session.save();
+
+      await whatsappService.sendText(
+        from,
+        '🔄 Atendimento reiniciado com sucesso!'
       );
-
-      if (slots.length === 0) {
-        let noSlotMsg = `⚠️ Infelizmente não há horários livres para o dia *${formatDateBR(
-          chosenDate
-        )}*.\n\nPor favor, selecione outra data digitando o número:\n\n`;
-
-        const nextDays = getNextBusinessDays(5);
-        nextDays.forEach((d, index) => {
-          noSlotMsg += `*${index + 1}* - ${d.displayLabel}\n`;
-        });
-        noSlotMsg += `\n_Digite 0 para reiniciar._`;
-
-        await sendWhatsApp(recipient, noSlotMsg);
-        return;
-      }
-
-      session.tempData.selectedDate = chosenDate;
-      session.tempData.timeOptions = slots;
-      session.step = 'AWAITING_TIME';
-      await session.save();
-
-      let slotMsg = `Horários disponíveis para o dia *${formatDateBR(
-        chosenDate
-      )}*:\nDigite o *número* do horário desejado:\n\n`;
-
-      slots.forEach((slot, index) => {
-        slotMsg += `*${index + 1}* - ${slot}\n`;
-      });
-
-      slotMsg += `\n_Digite 0 para reiniciar._`;
-
-      await sendWhatsApp(recipient, slotMsg);
-      break;
+      // Prossegue imediatamente para o passo IDLE exibindo o menu interativo
     }
 
-    case 'AWAITING_TIME': {
-      const timeIndex = parseInt(normalizedText, 10);
-      const timeOptions = session.tempData.timeOptions || [];
+    // Máquina de Estados da Conversa
+    switch (session.step) {
+      case 'IDLE': {
+        const dentist = await User.findOne();
+        const dentistName = dentist?.name || 'Dra. Meyriellem Damasceno';
+        const activeServices = await Service.find({ active: true }).sort({ name: 1 });
 
-      if (isNaN(timeIndex) || timeIndex < 1 || timeIndex > timeOptions.length) {
-        let retryMsg = `⚠️ Opção de horário inválida! Por favor, digite o número correspondente a um dos horários livres:\n\n`;
+        if (activeServices.length === 0) {
+          await whatsappService.sendText(
+            from,
+            `Olá, *${customerName}*! Seja bem-vindo(a) ao consultório da *${dentistName}*.\n\nNo momento não possuímos procedimentos disponíveis para agendamento. Por favor, tente novamente mais tarde.`
+          );
+          return;
+        }
 
-        timeOptions.forEach((slot, index) => {
-          retryMsg += `*${index + 1}* - ${slot}\n`;
-        });
-        retryMsg += `\n_Digite 0 para reiniciar._`;
+        const serviceRows = buildServiceRows(activeServices);
 
-        await sendWhatsApp(recipient, retryMsg);
-        return;
+        await whatsappService.sendInteractiveList(
+          from,
+          `Olá, *${customerName}*! 👋\nSeja bem-vindo(a) ao consultório da *${dentistName}*.\n\nPor favor, escolha o procedimento desejado:`,
+          'Ver Procedimentos',
+          serviceRows
+        );
+
+        session.step = 'AWAITING_SERVICE';
+        session.tempData = { customerName };
+        await session.save();
+        break;
       }
 
-      const chosenTime = timeOptions[timeIndex - 1];
-      const startTimeISO = `${session.tempData.selectedDate}T${chosenTime}:00.000Z`;
+      case 'AWAITING_SERVICE': {
+        const selectedServiceId = userChoiceId;
 
-      session.tempData.selectedStartTime = startTimeISO;
-      session.step = 'AWAITING_CONFIRMATION';
-      await session.save();
-
-      const service = await Service.findById(session.tempData.selectedServiceId);
-      const priceFormatted = (service?.price || 0).toFixed(2).replace('.', ',');
-
-      const summaryMsg =
-        `📋 *Resumo do Agendamento*\n\n` +
-        `• *Cliente:* ${session.tempData.customerName || customerName}\n` +
-        `• *Serviço:* ${service?.name || 'Serviço'}\n` +
-        `• *Duração:* ${service?.durationMinutes || 30} min\n` +
-        `• *Valor:* R$ ${priceFormatted}\n` +
-        `• *Data:* ${formatDateBR(session.tempData.selectedDate)}\n` +
-        `• *Horário:* ${chosenTime}\n\n` +
-        `Digite *1* para Confirmar ou *2* para Cancelar:`;
-
-      await sendWhatsApp(recipient, summaryMsg);
-      break;
-    }
-
-    case 'AWAITING_CONFIRMATION': {
-      const isConfirm =
-        normalizedText === '1' ||
-        /^(confirmar|sim|ok|confirmo|positivo)$/i.test(normalizedText);
-      const isCancel =
-        normalizedText === '2' ||
-        /^(cancelar|nao|não|desistir)$/i.test(normalizedText);
-
-      if (isConfirm) {
+        let service = null;
         try {
-          const appointment = await appointmentService.createAppointment({
-            customerName: session.tempData.customerName || customerName,
-            customerPhone: phone,
-            serviceId: session.tempData.selectedServiceId,
-            date: session.tempData.selectedDate,
-            startTime: new Date(session.tempData.selectedStartTime),
-            origin: 'WHATSAPP',
-          });
+          service = await Service.findOne({ _id: selectedServiceId, active: true });
+        } catch {
+          // ID com formato inválido de ObjectId
+        }
 
-          const timeFormatted = appointment.startTime.toISOString().substring(11, 16);
+        if (!service) {
+          const activeServices = await Service.find({ active: true }).sort({ name: 1 });
+          const serviceRows = buildServiceRows(activeServices);
 
-          await sendWhatsApp(
-            recipient,
-            `🎉 *Agendamento Confirmado com Sucesso!*\n\n` +
-              `Perfeito, *${appointment.customerName}*! Seu horário foi registrado em nosso sistema.\n\n` +
-              `📅 *Data:* ${formatDateBR(appointment.date)}\n` +
-              `⏰ *Horário:* ${timeFormatted}\n` +
-              `✂️ *Serviço:* ${appointment.serviceId?.name || 'Agendamento'}\n\n` +
-              `Te esperamos! Se precisar cancelar ou reagendar, basta nos mandar uma mensagem.`
+          await whatsappService.sendInteractiveList(
+            from,
+            'Opção não reconhecida. Por favor, selecione um dos procedimentos da lista abaixo:',
+            'Ver Procedimentos',
+            serviceRows
+          );
+          return;
+        }
+
+        // Salva o serviço escolhido e calcula os próximos dias úteis
+        session.tempData.selectedServiceId = service._id;
+        const nextDays = getNextBusinessDays(5);
+
+        const dateRows = nextDays.map((d) => ({
+          id: d.dateString,
+          title: d.displayTitle,
+          description: d.description,
+        }));
+
+        await whatsappService.sendInteractiveList(
+          from,
+          `Ótimo! Você escolheu *${service.name}* (${service.durationMinutes} min).\n\nPara qual data gostaria de agendar?`,
+          'Ver Datas',
+          dateRows
+        );
+
+        session.step = 'AWAITING_DATE';
+        await session.save();
+        break;
+      }
+
+      case 'AWAITING_DATE': {
+        const chosenDate = userChoiceId;
+
+        if (!chosenDate || !/^\d{4}-\d{2}-\d{2}$/.test(chosenDate)) {
+          const nextDays = getNextBusinessDays(5);
+          const dateRows = nextDays.map((d) => ({
+            id: d.dateString,
+            title: d.displayTitle,
+            description: d.description,
+          }));
+
+          await whatsappService.sendInteractiveList(
+            from,
+            'Data inválida. Por favor, escolha uma das datas disponíveis abaixo:',
+            'Ver Datas',
+            dateRows
+          );
+          return;
+        }
+
+        // Consulta horários livres através do slotService
+        const slots = await slotService.getAvailableSlots(
+          chosenDate,
+          session.tempData.selectedServiceId
+        );
+
+        if (slots.length === 0) {
+          const nextDays = getNextBusinessDays(5);
+          const dateRows = nextDays.map((d) => ({
+            id: d.dateString,
+            title: d.displayTitle,
+            description: d.description,
+          }));
+
+          await whatsappService.sendInteractiveList(
+            from,
+            `Infelizmente não há horários disponíveis para o dia *${formatDateBR(chosenDate)}*.\n\nPor favor, selecione outra data:`,
+            'Outras Datas',
+            dateRows
+          );
+          return;
+        }
+
+        session.tempData.selectedDate = chosenDate;
+
+        // Limita a até 10 horários para respeitar as regras da lista interativa da Meta
+        const slotRows = slots.slice(0, 10).map((slot) => ({
+          id: slot,
+          title: slot,
+          description: 'Horário disponível',
+        }));
+
+        await whatsappService.sendInteractiveList(
+          from,
+          `Horários livres para o dia *${formatDateBR(chosenDate)}*:\nSelecione o melhor horário para você:`,
+          'Ver Horários',
+          slotRows
+        );
+
+        session.step = 'AWAITING_TIME';
+        await session.save();
+        break;
+      }
+
+      case 'AWAITING_TIME': {
+        const chosenTime = userChoiceId;
+
+        if (!chosenTime || !/^\d{2}:\d{2}$/.test(chosenTime)) {
+          const slots = await slotService.getAvailableSlots(
+            session.tempData.selectedDate,
+            session.tempData.selectedServiceId
           );
 
-          // Remove a sessão do cliente após conclusão
-          await ChatSession.deleteOne({ phone });
-        } catch (error) {
-          if (error instanceof ConflictError || error.statusCode === 409) {
-            // Concorrência detectada: recarrega os horários livres e volta para AWAITING_TIME
-            const remainingSlots = await slotService.getAvailableSlots(
-              session.tempData.selectedDate,
-              session.tempData.selectedServiceId
-            );
+          const slotRows = slots.slice(0, 10).map((slot) => ({
+            id: slot,
+            title: slot,
+            description: 'Horário disponível',
+          }));
 
-            if (remainingSlots.length > 0) {
-              session.tempData.timeOptions = remainingSlots;
-              session.step = 'AWAITING_TIME';
-              await session.save();
-
-              let conflictMsg =
-                `⚠️ *Atenção:* O horário que você escolheu acabou de ser preenchido por outro cliente!\n\n` +
-                `Por favor, escolha outro horário livre digitando o *número* correspondente:\n\n`;
-
-              remainingSlots.forEach((slot, idx) => {
-                conflictMsg += `*${idx + 1}* - ${slot}\n`;
-              });
-
-              conflictMsg += `\n_Digite 0 para reiniciar._`;
-
-              await sendWhatsApp(recipient, conflictMsg);
-            } else {
-              const nextDays = getNextBusinessDays(5);
-              session.tempData.dateOptions = nextDays.map((d) => d.dateString);
-              session.step = 'AWAITING_DATE';
-              await session.save();
-
-              let noSlotsMsg =
-                `⚠️ O horário foi preenchido e não restam mais vagas para este dia.\n\n` +
-                `Por favor, selecione outra data digitando o *número* correspondente:\n\n`;
-
-              nextDays.forEach((d, idx) => {
-                noSlotsMsg += `*${idx + 1}* - ${d.displayLabel}\n`;
-              });
-
-              noSlotsMsg += `\n_Digite 0 para reiniciar._`;
-
-              await sendWhatsApp(recipient, noSlotsMsg);
-            }
-          } else {
-            console.error('❌ [BotFlow] Erro ao criar agendamento:', error);
-            await sendWhatsApp(
-              recipient,
-              'Desculpe, ocorreu um erro ao registrar seu agendamento. Por favor, tente novamente em alguns instantes digitando 0.'
-            );
-          }
+          await whatsappService.sendInteractiveList(
+            from,
+            'Horário inválido. Por favor, escolha um dos horários disponíveis na lista:',
+            'Ver Horários',
+            slotRows
+          );
+          return;
         }
-      } else if (isCancel) {
-        await sendWhatsApp(
-          recipient,
-          '❌ Agendamento cancelado. Se precisar de algo, basta nos enviar uma nova mensagem!'
-        );
-        await ChatSession.deleteOne({ phone });
-      } else {
-        await sendWhatsApp(
-          recipient,
-          'Opção não reconhecida. Por favor, digite *1* para Confirmar ou *2* para Cancelar (ou *0* para reiniciar):'
-        );
-      }
-      break;
-    }
 
-    default: {
-      session.step = 'IDLE';
-      await session.save();
-      break;
+        const startTimeISO = `${session.tempData.selectedDate}T${chosenTime}:00.000Z`;
+        session.tempData.selectedStartTime = startTimeISO;
+
+        const service = await Service.findById(session.tempData.selectedServiceId);
+        const priceFormatted = (service?.price || 0).toFixed(2).replace('.', ',');
+
+        const summaryText =
+          `📋 *Resumo do Agendamento*\n\n` +
+          `• *Cliente:* ${session.tempData.customerName || customerName}\n` +
+          `• *Serviço:* ${service?.name || 'Serviço'}\n` +
+          `• *Duração:* ${service?.durationMinutes || 30} min\n` +
+          `• *Valor:* R$ ${priceFormatted}\n` +
+          `• *Data:* ${formatDateBR(session.tempData.selectedDate)}\n` +
+          `• *Horário:* ${chosenTime}\n\n` +
+          `Deseja confirmar a sua reserva?`;
+
+        await whatsappService.sendInteractiveButtons(from, summaryText, [
+          { id: 'CONFIRM_YES', title: 'Confirmar' },
+          { id: 'CONFIRM_NO', title: 'Cancelar' },
+        ]);
+
+        session.step = 'AWAITING_CONFIRMATION';
+        await session.save();
+        break;
+      }
+
+      case 'AWAITING_CONFIRMATION': {
+        const isConfirm =
+          userChoiceId === 'CONFIRM_YES' ||
+          /^(confirmar|sim|ok|confirmo|1)$/i.test(userText);
+        const isCancel =
+          userChoiceId === 'CONFIRM_NO' ||
+          /^(cancelar|nao|não|desistir|2)$/i.test(userText);
+
+        if (isConfirm) {
+          try {
+            const appointment = await appointmentService.createAppointment({
+              customerName: session.tempData.customerName || customerName,
+              customerPhone: from,
+              serviceId: session.tempData.selectedServiceId,
+              date: session.tempData.selectedDate,
+              startTime: new Date(session.tempData.selectedStartTime),
+              origin: 'WHATSAPP',
+            });
+
+            const timeFormatted = appointment.startTime.toISOString().substring(11, 16);
+            const dentist = await User.findOne();
+            const dentistName = dentist?.name || 'Dra. Meyriellem Damasceno';
+
+            await whatsappService.sendText(
+              from,
+              `🎉 *Agendamento Confirmado com Sucesso!*\n\n` +
+                `Perfeito, *${appointment.customerName}*! Seu atendimento com a *${dentistName}* foi agendado.\n\n` +
+                `📅 *Data:* ${formatDateBR(appointment.date)}\n` +
+                `⏰ *Horário:* ${timeFormatted}\n` +
+                `🦷 *Procedimento:* ${appointment.serviceId?.name || 'Consulta Odontológica'}\n\n` +
+                `Te esperamos! Caso precise remarcar ou cancelar, basta nos enviar uma mensagem.`
+            );
+
+            // Remove a sessão do cliente após conclusão
+            await ChatSession.deleteOne({ phone: from });
+          } catch (error) {
+            if (error instanceof ConflictError || error.statusCode === 409) {
+              // Concorrência detectada: avisa o cliente e volta para seleção de horários
+              const remainingSlots = await slotService.getAvailableSlots(
+                session.tempData.selectedDate,
+                session.tempData.selectedServiceId
+              );
+
+              if (remainingSlots.length > 0) {
+                const slotRows = remainingSlots.slice(0, 10).map((slot) => ({
+                  id: slot,
+                  title: slot,
+                  description: 'Horário disponível',
+                }));
+
+                await whatsappService.sendInteractiveList(
+                  from,
+                  '⚠️ *Atenção:* O horário que você escolheu acabou de ser preenchido por outro cliente!\n\nPor favor, escolha outro horário disponível:',
+                  'Outros Horários',
+                  slotRows
+                );
+
+                session.step = 'AWAITING_TIME';
+                await session.save();
+              } else {
+                const nextDays = getNextBusinessDays(5);
+                const dateRows = nextDays.map((d) => ({
+                  id: d.dateString,
+                  title: d.displayTitle,
+                  description: d.description,
+                }));
+
+                await whatsappService.sendInteractiveList(
+                  from,
+                  '⚠️ O horário foi preenchido e não restam mais vagas para este dia.\n\nPor favor, selecione outra data:',
+                  'Outras Datas',
+                  dateRows
+                );
+
+                session.step = 'AWAITING_DATE';
+                await session.save();
+              }
+            } else {
+              console.error('❌ [BotFlow] Erro ao criar agendamento:', error);
+              await whatsappService.sendText(
+                from,
+                'Desculpe, ocorreu um erro ao registrar seu agendamento. Por favor, tente novamente em alguns instantes.'
+              );
+            }
+          }
+        } else if (isCancel) {
+          await whatsappService.sendText(
+            from,
+            '❌ Agendamento cancelado. Se precisar de algo, basta nos enviar uma nova mensagem!'
+          );
+          await ChatSession.deleteOne({ phone: from });
+        } else {
+          await whatsappService.sendInteractiveButtons(
+            from,
+            'Por favor, clique em um dos botões abaixo para confirmar ou cancelar sua reserva:',
+            [
+              { id: 'CONFIRM_YES', title: 'Confirmar' },
+              { id: 'CONFIRM_NO', title: 'Cancelar' },
+            ]
+          );
+        }
+        break;
+      }
+
+      default: {
+        session.step = 'IDLE';
+        await session.save();
+        break;
+      }
     }
+  } catch (err) {
+    console.error('💥 [BotFlow] Erro inesperado ao processar mensagem do Webhook:', err);
   }
 }
 

@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/authStore'
 import {
   Calendar,
-  Scissors,
+  ClipboardList,
   LogOut,
   MessageSquare,
   ShieldCheck,
@@ -23,9 +23,9 @@ const navigation = [
     icon: Calendar,
   },
   {
-    name: 'Serviços & Durações',
+    name: 'Serviços & Procedimentos',
     path: '/services',
-    icon: Scissors,
+    icon: ClipboardList,
   },
 ]
 
