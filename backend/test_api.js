@@ -266,13 +266,33 @@ async function testAll() {
     const duplicateJob = await addIncomingMessageJob(samplePayload);
     console.log(`   Job duplicado tratado com idempotência: ID "${duplicateJob.id}" (Sem duplicar execução)`);
 
+    // 11. Teste do Motor de Lembretes Automáticos (BullMQ Delayed Jobs)
+    console.log('\n1️⃣1️⃣ Testando Agendamento e Cancelamento de Lembretes (Delayed Jobs)...');
+    const mongoose = require('mongoose');
+    const { scheduleAppointmentReminder, cancelAppointmentReminder, reminderQueue } = require('./src/queues/reminderQueue');
+    const futureAppointment = {
+      _id: new mongoose.Types.ObjectId(),
+      customerName: 'Paciente Teste Lembrete',
+      customerPhone: '5511999998888',
+      startTime: new Date(Date.now() + 48 * 60 * 60 * 1000), // 48h no futuro
+      date: '2026-11-09',
+      serviceId: { name: 'Consulta e Avaliação' },
+    };
+    const reminderJob = await scheduleAppointmentReminder(futureAppointment);
+    console.log(`   Lembrete agendado no BullMQ: ID "${reminderJob?.id}" (Dormindo no Redis)`);
+
+    const cancelled = await cancelAppointmentReminder(futureAppointment._id);
+    console.log(`   Cancelamento do lembrete: ${cancelled ? 'Removido do Redis com sucesso' : 'Falha'}`);
+
     console.log('\n🎉 TODOS OS TESTES PASSARAM COM SUCESSO!');
   } catch (err) {
     console.error('💥 Erro durante execução dos testes:', err.response?.data || err.message);
   } finally {
     try {
       const { whatsappQueue } = require('./src/queues/whatsappQueue');
+      const { reminderQueue } = require('./src/queues/reminderQueue');
       await whatsappQueue.close();
+      await reminderQueue.close();
     } catch (_) {}
     server.close();
     await disconnectDatabase();

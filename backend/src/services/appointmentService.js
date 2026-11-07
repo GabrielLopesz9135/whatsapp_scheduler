@@ -125,6 +125,14 @@ async function createAppointment({
     console.warn('⚠️ [Socket.io] Falha ao emitir evento appointment:created:', socketErr.message);
   }
 
+  // Agenda lembrete prévio no BullMQ (Delayed Job)
+  try {
+    const { scheduleAppointmentReminder } = require('../queues/reminderQueue');
+    await scheduleAppointmentReminder(populatedAppointment);
+  } catch (reminderErr) {
+    console.warn('⚠️ [AppointmentService] Falha ao agendar lembrete no BullMQ:', reminderErr.message);
+  }
+
   return populatedAppointment;
 }
 
@@ -157,6 +165,12 @@ async function updateAppointmentStatus(id, status) {
     if (io) {
       if (status === 'CANCELLED') {
         io.emit('appointment:cancelled', { id: appointment._id });
+
+        // Cancela o lembrete agendado no BullMQ
+        try {
+          const { cancelAppointmentReminder } = require('../queues/reminderQueue');
+          cancelAppointmentReminder(appointment._id);
+        } catch (_) {}
       } else {
         io.emit('appointment:updated', populated);
       }

@@ -17,6 +17,8 @@ const env = {
   REDIS_HOST: process.env.REDIS_HOST || '127.0.0.1',
   REDIS_PORT: parseInt(process.env.REDIS_PORT, 10) || 6379,
   REDIS_PASSWORD: process.env.REDIS_PASSWORD || undefined,
+  ENABLE_AUTOMATIC_REMINDERS: process.env.ENABLE_AUTOMATIC_REMINDERS === 'true', // False por padrão para proteger contra cobranças fora da janela de 24h da Meta
+  REMINDER_HOURS_BEFORE: parseInt(process.env.REMINDER_HOURS_BEFORE, 10) || 24,
 };
 
 // Validação em produção para variáveis críticas

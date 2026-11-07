@@ -4,14 +4,16 @@ const env = require('./config/env');
 const { connectDatabase, disconnectDatabase } = require('./config/database');
 const { initSocket } = require('./config/socket');
 const { initWhatsAppWorker, closeWhatsAppWorker } = require('./workers/whatsappWorker');
+const { initReminderWorker, closeReminderWorker } = require('./workers/reminderWorker');
 
 async function bootstrap() {
   try {
     // 1. Conecta ao banco de dados MongoDB
     await connectDatabase();
 
-    // 2. Inicializa o Worker consumidor do BullMQ para mensagens do WhatsApp
+    // 2. Inicializa os Workers consumidores do BullMQ
     initWhatsAppWorker();
+    initReminderWorker();
 
     // 3. Cria o servidor HTTP acoplado ao Express
     const server = http.createServer(app);
@@ -33,6 +35,7 @@ async function bootstrap() {
       server.close(async () => {
         console.log('🔒 [Server] Servidor HTTP fechado.');
         await closeWhatsAppWorker();
+        await closeReminderWorker();
         await disconnectDatabase();
         process.exit(0);
       });
