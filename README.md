@@ -1,4 +1,4 @@
-# 🦷 AutoScheduler — Sistema Inteligente de Agendamentos em Tempo Real com WhatsApp Cloud API (Meta)
+# 🗓️ AutoScheduler — Sistema Inteligente de Agendamentos em Tempo Real com WhatsApp Cloud API (Meta)
 
 <div align="center">
 
@@ -22,6 +22,7 @@
 **Plataforma Full-Stack corporativa para automação de atendimentos e agendamentos via WhatsApp oficial (Meta Graph API) com sincronização bidirecional em tempo real (WebSockets) e Dashboard Administrativo reativo.**
 
 [Visão Geral](#-visão-geral-do-projeto) •
+[Agnóstico a Segmentos](#-solução-multi-segmento) •
 [Arquitetura](#-arquitetura-do-sistema) •
 [Engenharia e Diferenciais](#-destaques-de-engenharia-de-software) •
 [Fluxo da Máquina de Estados](#-máquina-de-estados-do-whatsapp-fsm) •
@@ -36,12 +37,24 @@
 
 ## 📌 Visão Geral do Projeto
 
-O **AutoScheduler** foi concebido para resolver o gargalo operacional de clínicas, consultórios e prestadores de serviços: a perda de tempo com agendamentos manuais via WhatsApp e o risco crônico de agendamentos duplicados (*overbooking*).
+O **AutoScheduler** foi concebido para resolver o gargalo operacional de empresas e prestadores de serviços: a perda crônica de tempo com triagem e marcação manual via WhatsApp e o risco constante de agendamentos duplicados (*overbooking*).
+
+> [!IMPORTANT]
+> ### 🌐 Solução Multi-Segmento (Totalmente Agnóstica)
+> O AutoScheduler não é restrito a um único nicho. Ele foi arquitetado para atender **qualquer prestador de serviços ou empresa que opere com agendamento prévio por horários/slots**:
+> - 💈 **Barbearias & Salões de Beleza** (cortes, coloração, escovas, visagismo)
+> - 💅 **Manicures, Pedicures & Nail Designers** (manicure, alongamento, spa dos pés)
+> - 🩺 **Clínicas & Consultórios** (médicos, dentistas, psicólogos, nutricionistas)
+> - 💆 **Estética, Spas & Massoterapia** (limpeza de pele, massagens, depilação, drenagem)
+> - 🏋️ **Personal Trainers, Fisioterapeutas & Pilates** (aulas individuais, reabilitação física)
+> - 💼 **Consultorias, Escritórios & Profissionais Autônomos** (atendimentos especializados com hora marcada)
+>
+> Todas as durações de slots (15 min, 30 min, 45 min, 60 min, etc.), faixas de horários de expediente (ex: 09:00 às 18:00), precificação e serviços são **100% configuráveis e dinâmicos**.
 
 A solução oferece:
-1. **Atendimento 100% Automatizado via WhatsApp Oficial (Meta Cloud API):** O paciente conversa diretamente com o número oficial do consultório recebendo **menus interativos de lista** (*List Messages*) e **botões de confirmação** (*Reply Buttons*), sem necessidade de digitar comandos complexos ou lidar com bots rudimentares.
-2. **Dashboard Administrativo em Tempo Real:** Construído em **Vue 3** e **Tailwind CSS**, o profissional visualiza a timeline de atendimentos do dia. Sempre que um cliente agenda ou cancela pelo WhatsApp, a grade é atualizada instantaneamente via **WebSockets** sem necessidade de recarregar a página (*F5*), com alertas visuais (*Toasts*) e indicadores de conectividade ao vivo.
-3. **Catálogo de Procedimentos Odontológicos Pré-Configurado:** Ambientado para um consultório odontológico (Dra. Meyriellem Damasceno), com procedimentos clínicos completos com durações de 30 ou 60 minutos e precificação parametrizável.
+1. **Atendimento 100% Automatizado via WhatsApp Oficial (Meta Cloud API):** O cliente conversa diretamente com o número oficial do estabelecimento recebendo **menus interativos de lista** (*List Messages*) e **botões de confirmação** (*Reply Buttons*), sem necessidade de digitar comandos complexos ou lidar com bots rudimentares.
+2. **Dashboard Administrativo em Tempo Real:** Construído em **Vue 3** e **Tailwind CSS**, o profissional ou recepcionista visualiza a timeline de atendimentos do dia. Sempre que um cliente agenda ou cancela pelo WhatsApp, a grade é atualizada instantaneamente via **WebSockets** sem necessidade de recarregar a página (*F5*), com alertas visuais (*Toasts*) e indicadores de conectividade ao vivo.
+3. **Catálogo de Serviços Flexível e Parametrizável:** Cadastro de serviços com durações personalizadas, valores e descrições detalhadas integradas diretamente aos botões interativos do WhatsApp.
 
 ---
 
@@ -51,22 +64,28 @@ O projeto adota uma arquitetura em camadas desacoplada e modular, separando resp
 
 ```text
 whatsapp-scheduler/
+├── .github/
+│   └── workflows/ci.yml       # Pipeline CI/CD automatizado no GitHub Actions (MongoDB RS + Redis)
 ├── backend/                       # RESTful API, WebSockets & Integração Meta
+│   ├── docs/
+│   │   └── swagger.json           # Especificação formal OpenAPI 3.0 para Swagger UI
 │   ├── src/
-│   │   ├── config/                # Banco (MongoDB), Variáveis de Ambiente e Socket.io
+│   │   ├── config/                # Banco (MongoDB), Redis, Variáveis de Ambiente e Socket.io
 │   │   ├── controllers/           # Camada HTTP (Auth, Services, Appointments, Webhook)
-│   │   ├── middlewares/           # Autenticação JWT e Central de Tratamento de Erros
+│   │   ├── middlewares/           # Autenticação JWT, Zod Validation, Pino HTTP e Central de Erros
 │   │   ├── models/                # Schemas Mongoose (User, Service, Appointment, ChatSession)
+│   │   ├── queues/                # Filas Redis + BullMQ (Mensagens Assíncronas e Lembretes Agendados)
 │   │   ├── routes/                # Definição e agrupamento de rotas REST
+│   │   ├── schemas/               # Schemas de validação estrita com Zod (Body, Query, Params)
 │   │   ├── services/              # Regras de Negócio e Motores de Cálculo
 │   │   │   ├── slotService.js         # Motor de cálculo dinâmico de horários livres
-│   │   │   ├── appointmentService.js  # Gestão de agendamentos com transações ACID
+│   │   │   ├── appointmentService.js  # Gestão de agendamentos com transações ACID e Métricas
 │   │   │   ├── botFlowService.js      # Máquina de estados finitos (FSM) do WhatsApp
 │   │   │   └── whatsappService.js     # Cliente HTTP Axios para Meta Graph API v21.0
-│   │   ├── app.js                 # Express Application, Middlewares globais e CORS
+│   │   ├── app.js                 # Express Application, Pino logger, Middlewares globais e CORS
 │   │   └── server.js              # Inicialização do Servidor HTTP + WebSocket + Graceful Shutdown
-│   ├── seed.js                    # Script de população do consultório e procedimentos
-│   └── test_api.js                # Bateria completa de testes automatizados de integração
+│   ├── seed.js                    # Script de população do estabelecimento e catálogo multi-segmento
+│   └── test_api.js                # Bateria completa de testes automatizados de integração (11 etapas)
 │
 ├── frontend/                      # Dashboard SPA (Single Page Application)
 │   ├── src/
@@ -78,11 +97,11 @@ whatsapp-scheduler/
 │   │   ├── router/                # Vue Router com Navigation Guards de autenticação
 │   │   ├── services/              # Clientes Axios (com interceptor JWT) e Socket.io
 │   │   ├── stores/                # Estados globais Pinia (Auth, Appointments, Services)
-│   │   └── views/                 # Páginas principais (Dashboard, Serviços, Login)
+│   │   └── views/                 # Páginas principais (Agenda, Métricas & Indicadores, Serviços, Login)
 │   ├── vite.config.js             # Bundler Vite com aliases e proxies de desenvolvimento
 │   └── tailwind.config.js         # Customização de cores e extensões de design
 │
-└── docker-compose.yml             # MongoDB 7.0 em Replica Set para suporte a Transações ACID
+└── docker-compose.yml             # MongoDB 7.0 em Replica Set e Redis 7.0 para BullMQ
 ```
 
 ---
@@ -99,7 +118,7 @@ Quando múltiplos clientes tentam agendar o mesmo intervalo simultaneamente (ou 
 ### 2. Motor Dinâmico de Cálculo de Slots (`slotService`)
 Diferente de sistemas engessados com horários fixos de 1 em 1 hora, o motor calcula a disponibilidade em tempo real:
 - Respeita o expediente profissional (`start: "09:00"`, `end: "18:00"`).
-- Considera a duração exata do procedimento escolhido (ex: 30 min para profilaxia, 60 min para clareamento).
+- Considera a duração exata do serviço escolhido (ex: 30 min para corte/avaliação, 60 min para sessão completa).
 - Gera intervalos com base na granularidade configurada (`slotInterval: 30`).
 - Avalia se o horário candidato possui espaço contínuo livre suficiente antes do próximo agendamento ou do fim do expediente.
 
@@ -126,6 +145,17 @@ Para suportar cenários reais com milhares de mensagens simultâneas e evitar so
 - **Logging Estruturado em JSON:** Utilização do **Pino**, o logger mais veloz do ecossistema Node.js, com overhead de CPU quase nulo. Em produção, os logs são emitidos em JSON estruturado com timestamps ISO e métricas de tempo de resposta (`responseTime`).
 - **Rastreabilidade Ponta a Ponta (*Correlation ID*):** Cada requisição HTTP recebe um UUID único (`x-correlation-id`) gerado ou preservado de gateways de borda. Esse identificador acompanha toda a execução da requisição através de child loggers e é devolvido nos cabeçalhos de resposta e nos payloads de erro (`4xx`/`5xx`), permitindo isolar a causa raiz de qualquer falha em sistemas como Datadog, Grafana Loki ou AWS CloudWatch.
 
+### 7. Motor de Lembretes Agendados e Safeguard Financeiro (Delayed Jobs)
+- **Agendamento com Precisão Temporal:** Ao confirmar um agendamento para daqui a dias ou semanas, o BullMQ agenda um *Delayed Job* (`reminderQueue`) programado para disparar exatamente 24 horas antes do início da consulta (`delay = appointmentTime - 24h - now`).
+- **Proteção Orçamentária da Meta (Flag Zero-Cost):** Mensagens enviadas fora da janela ativa de 24h aberta pelo cliente exigem templates pré-aprovados e geram cobrança da Meta. O sistema possui a flag de ambiente `ENABLE_AUTOMATIC_REMINDERS=false` por padrão, permitindo que a infraestrutura esteja 100% pronta e testada sem incorrer em custos indesejados.
+
+### 8. Painel de Métricas & Indicadores em Tempo Real (MongoDB Aggregation)
+- **Pipelines de Agregação Otimizados:** O endpoint `/api/appointments/metrics` utiliza aggregations do MongoDB para calcular instantaneamente:
+  - **Faturamento Total Estimado & Ticket Médio:** Soma dos atendimentos e serviços confirmados/concluídos.
+  - **Taxa de Ocupação da Grade (%):** Calcula a soma de minutos de atendimentos agendados contra a capacidade total do expediente (540 minutos úteis/dia).
+  - **Conversão de Canais:** Percentual de agendamentos realizados de forma 100% autônoma pelo WhatsApp versus inserções manuais pelo Dashboard.
+  - **Ranking de Serviços Mais Lucrativos:** Top 5 serviços por demanda e faturamento gerado.
+
 ---
 
 ## 🤖 Máquina de Estados do WhatsApp (FSM)
@@ -135,9 +165,9 @@ A conversa no WhatsApp é gerenciada pelo modelo de persistência `ChatSession`,
 ```mermaid
 stateDiagram-v2
     [*] --> IDLE : Cliente envia qualquer mensagem ("Oi", "Olá")
-    IDLE --> AWAITING_SERVICE : Bot envia lista interativa com Procedimentos Odontológicos
+    IDLE --> AWAITING_SERVICE : Bot envia lista interativa com Catálogo de Serviços
     
-    AWAITING_SERVICE --> AWAITING_DATE : Cliente clica no Procedimento (ex: Restauração)
+    AWAITING_SERVICE --> AWAITING_DATE : Cliente seleciona o Serviço Desejado
     AWAITING_DATE --> AWAITING_TIME : Cliente seleciona uma das próximas datas úteis
     
     AWAITING_TIME --> AWAITING_CONFIRMATION : Cliente escolhe um dos horários livres calculados
@@ -167,6 +197,9 @@ stateDiagram-v2
 | **Express.js** | 4.22.x | Framework RESTful robusto e flexível |
 | **MongoDB & Mongoose** | 7.0 / 9.11.x | Banco NoSQL com ODM, tipagem estrita e suporte a Transações ACID |
 | **Redis & BullMQ** | 7.0 / 6.x | Sistema distribuído de filas assíncronas, retentativas e idempotência |
+| **Zod** | 3.25.x | Validação de esquemas e contratos estritos em runtime |
+| **Pino & Pino-HTTP** | 10.3.x / 11.1.x | Logging estruturado JSON de altíssima performance com Correlation IDs |
+| **Swagger UI Express** | 5.0.x | Servidor de documentação interativa OpenAPI 3.0 |
 | **Socket.io** | 4.8.x | Comunicação full-duplex bidirecional em tempo real para WebSockets |
 | **Axios** | 1.21.x | Cliente HTTP com suporte a interceptores para Graph API da Meta |
 | **JSON Web Token (JWT)** | 9.0.x | Autenticação stateless segura para a API administrativa |
@@ -192,7 +225,7 @@ stateDiagram-v2
 ```json
 {
   "_id": "ObjectId",
-  "name": "Dra. Meyriellem Damasceno",
+  "name": "Administrador / Gestor",
   "email": "admin@scheduler.com",
   "passwordHash": "$2a$10$...",
   "businessHours": {
@@ -204,14 +237,14 @@ stateDiagram-v2
 }
 ```
 
-### 2. `Service` (Procedimentos Clínicos)
+### 2. `Service` (Serviços e Procedimentos Cadastrados)
 ```json
 {
   "_id": "ObjectId",
-  "name": "Clareamento Consultório",
-  "description": "Sessão clínica de clareamento dental profissional com barreira fotopolimerizável.",
+  "name": "Consulta Especializada / Atendimento Padrão",
+  "description": "Sessão dedicada com análise técnica, avaliação e execução de procedimento.",
   "durationMinutes": 60,
-  "price": 380.00,
+  "price": 200.00,
   "active": true
 }
 ```
@@ -270,6 +303,7 @@ A API possui especificação formal OpenAPI 3.0 disponível em [`backend/docs/sw
 ### Agendamentos (`/api/appointments`)
 - `GET /api/appointments?date=YYYY-MM-DD`: Retorna agendamentos confirmados da data.
 - `GET /api/appointments/available-slots?date=YYYY-MM-DD&serviceId=ID`: Executa o motor `slotService` e retorna os horários livres.
+- `GET /api/appointments/metrics`: Retorna métricas analíticas e faturamento com filtros opcionais (`date`, `startDate`, `endDate`).
 - `POST /api/appointments`: Cria agendamento manual com verificação de concorrência.
 - `PATCH /api/appointments/:id/cancel`: Cancela agendamento e dispara evento via WebSocket.
 
@@ -279,20 +313,20 @@ A API possui especificação formal OpenAPI 3.0 disponível em [`backend/docs/sw
 
 ---
 
-## 🩺 Procedimentos Clínicos Pré-Configurados
+## 💼 Catálogo de Serviços Pré-Configurado (Multi-Segmento)
 
-O sistema conta com uma lista de **10 procedimentos típicos** de consultório odontológico, respeitando com exatidão o limite de até 10 itens por seção da Meta Cloud API:
+O sistema conta com uma lista de **10 serviços pré-configurados** que exemplificam a versatilidade da solução para diferentes nichos (saúde, beleza, bem-estar, estética e serviços em geral), respeitando com exatidão o limite de até 10 itens por seção da Meta Cloud API:
 
-1. **Consulta e Avaliação** (30 min • R\$ 100,00)
-2. **Profilaxia e Limpeza** (30 min • R\$ 150,00)
-3. **Restauração (1 Face)** (30 min • R\$ 140,00)
-4. **Restauração (2+ Faces)** (60 min • R\$ 220,00)
-5. **Raspagem Periodontal** (60 min • R\$ 180,00)
-6. **Exodontia Simples** (60 min • R\$ 200,00)
-7. **Clareamento Consultório** (60 min • R\$ 380,00)
-8. **Selante e Flúor** (30 min • R\$ 120,00)
-9. **Urgência Odontológica** (30 min • R\$ 160,00)
-10. **Ajuste e Repolimento** (30 min • R\$ 90,00)
+1. **Consulta / Avaliação Inicial** (30 min • R\$ 100,00)
+2. **Atendimento Padrão** (30 min • R\$ 120,00)
+3. **Procedimento Express / Manutenção** (30 min • R\$ 80,00)
+4. **Sessão Completa Especializada** (60 min • R\$ 200,00)
+5. **Corte, Design & Barba** (30 min • R\$ 70,00)
+6. **Procedimento Estético & Bem-Estar** (60 min • R\$ 220,00)
+7. **Sessão de Personal / Terapia** (60 min • R\$ 150,00)
+8. **Tratamento Avançado / Premium** (60 min • R\$ 350,00)
+9. **Atendimento de Urgência / Encaixe** (30 min • R\$ 160,00)
+10. **Revisão & Retorno** (30 min • R\$ 90,00)
 
 ---
 
@@ -343,7 +377,7 @@ cd backend
 # Instalar dependências
 npm install
 
-# Popular banco com a Dra. Meyriellem e os procedimentos odontológicos
+# Popular banco com o usuário administrador e serviços multi-segmento
 npm run seed
 
 # Executar servidor em modo de desenvolvimento (com nodemon)
@@ -384,22 +418,24 @@ cd backend
 npm test
 ```
 
-A suíte valida automaticamente as **9 etapas essenciais do sistema**:
+A suíte valida automaticamente as **11 etapas essenciais do sistema**:
 1. ✅ Healthcheck da API REST (`GET /health`)
 2. ✅ Autenticação JWT com obtenção de Bearer Token (`POST /api/auth/login`)
 3. ✅ Listagem e integridade do catálogo de serviços (`GET /api/services`)
 4. ✅ Motor de cálculo de slots livres (`GET /api/appointments/available-slots`)
 5. ✅ Criação manual de agendamento pelo Dashboard
-6. ✅ **Prevenção de Race Condition e Conflito (Status 409 Conflict)**
-7. ✅ Verificação de Webhook GET da Meta com handshake de desafio (*Challenge*)
-8. ✅ Recepção assíncrona do Webhook POST com retorno imediato 200 OK
-9. ✅ **Simulação completa da Máquina de Estados Interativa da Meta:**
+6. ✅ **Métricas & Indicadores:** Agregação de faturamento, ocupação da grade e conversão (`GET /api/appointments/metrics`)
+7. ✅ **Prevenção de Race Condition e Conflito (Status 409 Conflict)**
+8. ✅ Verificação de Webhook GET da Meta com handshake de desafio (*Challenge*)
+9. ✅ **Recepção Assíncrona no Webhook POST:** Enfileiramento imediato no BullMQ e retorno 200 OK
+10. ✅ **Simulação completa da Máquina de Estados Interativa da Meta:**
    - Envio de Mensagem de Texto inicial ("Olá")
    - Seleção interativa de Procedimento via `list_reply`
    - Seleção interativa de Data via `list_reply`
    - Seleção interativa de Horário via `list_reply`
    - Confirmação final via botão `button_reply` (`CONFIRM_YES`)
    - Emissão de evento via WebSocket e limpeza da sessão
+11. ✅ **Motor de Delayed Jobs:** Verificação de agendamento de lembrete com cálculo de delay no Redis
 
 ---
 

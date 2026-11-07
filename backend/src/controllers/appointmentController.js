@@ -85,10 +85,20 @@ async function updateStatus(req, res) {
   return res.status(200).json(updatedAppointment);
 }
 
+/**
+ * Retorna as métricas e indicadores de desempenho da clínica.
+ */
+async function getMetrics(req, res) {
+  const { date, startDate, endDate } = req.query;
+  const metrics = await appointmentService.getMetricsSummary({ date, startDate, endDate });
+  return res.status(200).json(metrics);
+}
+
 module.exports = {
   list,
   getAvailableSlots,
   create,
   updateStatus,
+  getMetrics,
 };
 

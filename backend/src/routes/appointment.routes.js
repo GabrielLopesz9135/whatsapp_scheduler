@@ -14,6 +14,7 @@ const router = Router();
 router.use(authMiddleware);
 
 router.get('/available-slots', validate(availableSlotsQuerySchema, 'query'), appointmentController.getAvailableSlots);
+router.get('/metrics', appointmentController.getMetrics);
 router.get('/', appointmentController.list);
 router.post('/', validate(createAppointmentSchema), appointmentController.create);
 router.patch('/:id/status', validate(updateStatusSchema), appointmentController.updateStatus);

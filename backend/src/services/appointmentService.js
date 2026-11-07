@@ -203,9 +203,107 @@ async function getAppointments(filter = {}) {
     .sort({ startTime: 1 });
 }
 
+/**
+ * Agrega e calcula métricas executivas de desempenho do consultório:
+ * - Faturamento Total e Ticket Médio
+ * - Atendimentos Confirmados, Cancelados e Taxa de Ocupação
+ * - Canal de Agendamento: % WhatsApp Automatizado vs Recepção Manual
+ * - Ranking dos Procedimentos Mais Realizados
+ * 
+ * @param {Object} filter - { date, startDate, endDate }
+ * @returns {Promise<Object>}
+ */
+async function getMetricsSummary(filter = {}) {
+  const query = {};
+
+  if (filter.date) {
+    query.date = filter.date;
+  } else if (filter.startDate && filter.endDate) {
+    query.date = { $gte: filter.startDate, $lte: filter.endDate };
+  }
+
+  const appointments = await Appointment.find(query).populate('serviceId');
+
+  const total = appointments.length;
+  let confirmed = 0;
+  let cancelled = 0;
+  let completed = 0;
+  let whatsapp = 0;
+  let dashboard = 0;
+  let totalRevenue = 0;
+  let totalOccupiedMinutes = 0;
+
+  const servicesMap = {};
+
+  for (const app of appointments) {
+    if (app.status === 'CONFIRMED') confirmed++;
+    else if (app.status === 'CANCELLED') cancelled++;
+    else if (app.status === 'COMPLETED') completed++;
+
+    if (app.origin === 'WHATSAPP') whatsapp++;
+    else dashboard++;
+
+    if (app.status === 'CONFIRMED' || app.status === 'COMPLETED') {
+      const price = app.serviceId?.price || 0;
+      const duration = app.serviceId?.durationMinutes || 30;
+
+      totalRevenue += price;
+      totalOccupiedMinutes += duration;
+
+      const serviceName = app.serviceId?.name || 'Consulta';
+      if (!servicesMap[serviceName]) {
+        servicesMap[serviceName] = { name: serviceName, count: 0, revenue: 0 };
+      }
+      servicesMap[serviceName].count++;
+      servicesMap[serviceName].revenue += price;
+    }
+  }
+
+  const activeCount = confirmed + completed;
+  const averageTicket = activeCount > 0 ? Math.round((totalRevenue / activeCount) * 100) / 100 : 0;
+  const whatsappRate = total > 0 ? Math.round((whatsapp / total) * 100) : 0;
+  const cancellationRate = total > 0 ? Math.round((cancelled / total) * 100) : 0;
+
+  // Capacidade estimada (Expediente das 09h às 18h = 540 minutos úteis por dia)
+  const uniqueDatesCount = new Set(appointments.map((a) => a.date)).size || 1;
+  const capacityMinutes = uniqueDatesCount * 540;
+  const occupancyRate =
+    capacityMinutes > 0
+      ? Math.min(100, Math.round((totalOccupiedMinutes / capacityMinutes) * 100))
+      : 0;
+
+  const topServices = Object.values(servicesMap).sort((a, b) => b.count - a.count);
+
+  return {
+    totals: {
+      totalAppointments: total,
+      confirmed,
+      cancelled,
+      completed,
+      activeCount,
+    },
+    financial: {
+      totalRevenue,
+      averageTicket,
+    },
+    channel: {
+      whatsapp,
+      dashboard,
+      whatsappRate,
+    },
+    efficiency: {
+      occupancyRate,
+      cancellationRate,
+      totalOccupiedMinutes,
+    },
+    topServices,
+  };
+}
+
 module.exports = {
   createAppointment,
   updateAppointmentStatus,
   getAppointments,
+  getMetricsSummary,
 };
 

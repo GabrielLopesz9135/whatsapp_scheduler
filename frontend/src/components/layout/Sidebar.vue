@@ -5,6 +5,7 @@ import { useAuthStore } from '@/stores/authStore'
 import {
   Calendar,
   ClipboardList,
+  BarChart3,
   LogOut,
   MessageSquare,
   ShieldCheck,
@@ -26,6 +27,11 @@ const navigation = [
     name: 'Serviços & Procedimentos',
     path: '/services',
     icon: ClipboardList,
+  },
+  {
+    name: 'Métricas & Indicadores',
+    path: '/metrics',
+    icon: BarChart3,
   },
 ]
 

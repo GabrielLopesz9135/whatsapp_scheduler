@@ -168,14 +168,14 @@ async function handleIncomingMessage(webhookPayload) {
     // Máquina de Estados da Conversa
     switch (session.step) {
       case 'IDLE': {
-        const dentist = await User.findOne();
-        const dentistName = dentist?.name || 'Dra. Meyriellem Damasceno';
+        const provider = await User.findOne();
+        const providerName = provider?.name || 'nosso estabelecimento';
         const activeServices = await Service.find({ active: true }).sort({ name: 1 });
 
         if (activeServices.length === 0) {
           await whatsappService.sendText(
             from,
-            `Olá, *${customerName}*! Seja bem-vindo(a) ao consultório da *${dentistName}*.\n\nNo momento não possuímos procedimentos disponíveis para agendamento. Por favor, tente novamente mais tarde.`
+            `Olá, *${customerName}*! Seja bem-vindo(a) ao sistema de agendamento de *${providerName}*.\n\nNo momento não possuímos serviços disponíveis para agendamento. Por favor, tente novamente mais tarde.`
           );
           return;
         }
@@ -184,8 +184,8 @@ async function handleIncomingMessage(webhookPayload) {
 
         await whatsappService.sendInteractiveList(
           from,
-          `Olá, *${customerName}*! 👋\nSeja bem-vindo(a) ao consultório da *${dentistName}*.\n\nPor favor, escolha o procedimento desejado:`,
-          'Ver Procedimentos',
+          `Olá, *${customerName}*! 👋\nSeja bem-vindo(a) ao sistema de agendamentos de *${providerName}*.\n\nPor favor, escolha o serviço desejado:`,
+          'Ver Serviços',
           serviceRows
         );
 
@@ -374,17 +374,17 @@ async function handleIncomingMessage(webhookPayload) {
             });
 
             const timeFormatted = appointment.startTime.toISOString().substring(11, 16);
-            const dentist = await User.findOne();
-            const dentistName = dentist?.name || 'Dra. Meyriellem Damasceno';
+            const provider = await User.findOne();
+            const providerName = provider?.name || 'nosso estabelecimento';
 
             await whatsappService.sendText(
               from,
               `🎉 *Agendamento Confirmado com Sucesso!*\n\n` +
-                `Perfeito, *${appointment.customerName}*! Seu atendimento com a *${dentistName}* foi agendado.\n\n` +
+                `Perfeito, *${appointment.customerName}*! Seu horário com *${providerName}* foi confirmado.\n\n` +
                 `📅 *Data:* ${formatDateBR(appointment.date)}\n` +
                 `⏰ *Horário:* ${timeFormatted}\n` +
-                `🦷 *Procedimento:* ${appointment.serviceId?.name || 'Consulta Odontológica'}\n\n` +
-                `Te esperamos! Caso precise remarcar ou cancelar, basta nos enviar uma mensagem.`
+                `✂️ *Serviço:* ${appointment.serviceId?.name || 'Atendimento'}\n\n` +
+                `Te aguardamos! Caso precise remarcar ou cancelar, basta nos enviar uma mensagem.`
             );
 
             // Remove a sessão do cliente após conclusão

@@ -1,4 +1,4 @@
-# 🦷 AutoScheduler — Front-end Dashboard Administrativo (Vue 3 + Vite)
+# 🗓️ AutoScheduler — Front-end Dashboard Administrativo (Vue 3 + Vite)
 
 <div align="center">
 
@@ -12,7 +12,7 @@
 
 <br />
 
-**Dashboard Single Page Application (SPA) reativo para gestão de agendamentos em tempo real, sincronizado via WebSockets com o fluxo oficial da WhatsApp Cloud API (Meta).**
+**Dashboard Single Page Application (SPA) reativo para gestão de agendamentos em tempo real, multi-segmento (clínicas, barbearias, salões de beleza, consultórios e prestadores de serviços), sincronizado via WebSockets com o fluxo oficial da WhatsApp Cloud API (Meta).**
 
 </div>
 
@@ -20,13 +20,14 @@
 
 ## 📌 Visão Geral da Interface
 
-O **Front-end do AutoScheduler** foi desenvolvido com as práticas mais modernas do ecossistema **Vue 3**, proporcionando uma experiência de recepção clínica instantânea:
+O **Front-end do AutoScheduler** foi desenvolvido com as práticas mais modernas do ecossistema **Vue 3**, proporcionando uma experiência de recepção e gestão de atendimentos instantânea:
 
 - **Sincronização em Tempo Real (WebSockets):** Conexão persistente com o back-end via `socket.io-client`. Qualquer agendamento realizado ou cancelado pelo cliente no WhatsApp surge na tela imediatamente sem requisições periódicas (*polling*) ou recarregamento (*F5*).
 - **Feedback Visual e Sonoro:** Sistema integrado de notificações *Toast* que alerta o operador no canto superior da tela com detalhes da ação (`🎉 Novo Agendamento pelo WhatsApp!` ou `⚠️ Agendamento Cancelado`).
 - **Seletor Global de Datas:** Navegação intuitiva entre dias anteriores, dia atual (*Hoje*) e dias futuros, com atalhos inteligentes que destacam dias com agendamentos cadastrados.
-- **Linha do Tempo Visual (Timeline Grid):** Grade visual baseada nos horários de funcionamento do consultório (09:00 às 18:00), identificando slots livres, ocupados, duração do procedimento e origem do agendamento (WhatsApp ou Manual).
-- **Gestão de Procedimentos Odontológicos:** Painel dedicado para criação, edição e inativação de procedimentos com cálculo dinâmico de duração (30m ou 60m) e precificação.
+- **Linha do Tempo Visual (Timeline Grid):** Grade visual baseada nos horários de funcionamento do estabelecimento (09:00 às 18:00), identificando slots livres, ocupados, duração do serviço e origem do agendamento (WhatsApp ou Manual).
+- **Gestão de Catálogo de Serviços & Durações:** Painel dedicado para criação, edição e inativação de serviços com cálculo dinâmico de duração (15m, 30m, 45m, 60m+) e precificação.
+- **Painel de Métricas & Indicadores:** Dashboard executivo com cálculo de faturamento bruto, ticket médio por cliente, taxa de automação do bot do WhatsApp e ranking dos serviços mais lucrativos.
 
 ---
 
@@ -57,9 +58,10 @@ frontend/src/
 │   ├── authStore.js               # Gestão de token JWT, dados do profissional e logout
 │   └── serviceStore.js            # Estado da lista de procedimentos e ações CRUD
 ├── views/
-│   ├── DashboardView.vue          # Visão geral da agenda diária e métricas rápidas
+│   ├── DashboardView.vue          # Visão geral da agenda diária e status em tempo real
+│   ├── MetricsView.vue            # Dashboard de métricas, faturamento e eficiência
 │   ├── LoginView.vue              # Tela de autenticação segura do profissional
-│   └── ServicesView.vue           # Catálogo de procedimentos com busca e filtros
+│   └── ServicesView.vue           # Catálogo de serviços com busca e filtros
 ├── App.vue                        # Shell da aplicação com container global de Toasts
 └── main.js                        # Inicialização do Vue 3, Pinia e Vue Router
 ```

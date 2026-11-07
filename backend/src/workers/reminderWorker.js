@@ -57,10 +57,10 @@ function initReminderWorker() {
       const timeFormatted = new Date(startTime).toISOString().substring(11, 16);
       const reminderText =
         `👋 Olá, *${customerName}*! Lembrando do seu agendamento de amanhã:\n\n` +
-        `🦷 *Procedimento:* ${serviceName}\n` +
+        `🗓️ *Serviço:* ${serviceName}\n` +
         `📅 *Data:* ${date}\n` +
         `⏰ *Horário:* ${timeFormatted}\n\n` +
-        `Te esperamos no consultório da Dra. Meyriellem Damasceno!`;
+        `Te esperamos para o seu atendimento!`;
 
       await whatsappService.sendText(customerPhone, reminderText);
       console.log(`✅ [Reminder Worker] Lembrete real enviado com sucesso para ${customerPhone}`);

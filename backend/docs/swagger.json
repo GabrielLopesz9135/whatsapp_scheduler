@@ -1,8 +1,8 @@
 {
   "openapi": "3.0.3",
   "info": {
-    "title": "AutoScheduler API — Consultório Dra. Meyriellem Damasceno",
-    "description": "API RESTful corporativa para gestão de agendamentos em tempo real sincronizada via WebSockets com a Meta WhatsApp Cloud API.",
+    "title": "AutoScheduler API — Sistema Multi-Segmento de Agendamentos Automatizados via WhatsApp",
+    "description": "API RESTful corporativa para gestão de agendamentos em tempo real para qualquer prestador de serviços (Clínicas, Barbearias, Salões de Beleza, Consultórios e Profissionais Liberais), sincronizada via WebSockets com a Meta WhatsApp Cloud API.",
     "version": "1.0.0",
     "contact": {
       "name": "Gabriel Lopes",
@@ -127,7 +127,7 @@
     },
     "/services": {
       "get": {
-        "tags": ["Procedimentos Odontológicos"],
+        "tags": ["Serviços & Procedimentos"],
         "summary": "Lista todos os procedimentos cadastrados",
         "security": [{ "BearerAuth": [] }],
         "responses": {
@@ -138,7 +138,7 @@
         }
       },
       "post": {
-        "tags": ["Procedimentos Odontológicos"],
+        "tags": ["Serviços & Procedimentos"],
         "summary": "Cadastra um novo procedimento",
         "security": [{ "BearerAuth": [] }],
         "requestBody": {
@@ -149,7 +149,7 @@
                 "type": "object",
                 "required": ["name", "durationMinutes", "price"],
                 "properties": {
-                  "name": { "type": "string", "example": "Clareamento Consultório" },
+                  "name": { "type": "string", "example": "Consulta Especializada / Atendimento Padrão" },
                   "description": { "type": "string" },
                   "durationMinutes": { "type": "integer", "example": 60 },
                   "price": { "type": "number", "example": 380.0 },
@@ -185,6 +185,37 @@
                     "date": { "type": "string" },
                     "serviceId": { "type": "string" },
                     "availableSlots": { "type": "array", "items": { "type": "string", "example": "09:00" } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/appointments/metrics": {
+      "get": {
+        "tags": ["Métricas & Indicadores"],
+        "summary": "Retorna métricas consolidadas (Faturamento, Ocupação, Conversão WhatsApp, Ranking)",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          { "name": "date", "in": "query", "required": false, "schema": { "type": "string", "format": "date", "example": "2026-11-04" } },
+          { "name": "startDate", "in": "query", "required": false, "schema": { "type": "string", "format": "date" } },
+          { "name": "endDate", "in": "query", "required": false, "schema": { "type": "string", "format": "date" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Métricas calculadas do estabelecimento / prestador",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "totals": { "type": "object" },
+                    "financial": { "type": "object" },
+                    "channel": { "type": "object" },
+                    "efficiency": { "type": "object" },
+                    "topServices": { "type": "array", "items": { "type": "object" } }
                   }
                 }
               }

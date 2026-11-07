@@ -53,7 +53,7 @@ async function scheduleAppointmentReminder(appointment) {
       customerPhone: appointment.customerPhone,
       startTime: appointment.startTime,
       date: appointment.date,
-      serviceName: appointment.serviceId?.name || 'Consulta Odontológica',
+      serviceName: appointment.serviceId?.name || 'Serviço Agendado',
     },
     {
       delay, // Milissegundos que o Redis aguardará antes de liberar o job para o Worker

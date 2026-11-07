@@ -59,8 +59,8 @@ async function testAll() {
     console.log('\n3️⃣ Testando Listagem de Serviços (/api/services)...');
     const servicesRes = await axios.get(`${baseURL}/api/services`, { headers: authHeaders });
     console.log(`   Serviços encontrados: ${servicesRes.data.length}`);
-    const dentalService = servicesRes.data[0];
-    console.log(`   Serviço selecionado para teste: "${dentalService.name}" (ID: ${dentalService._id})`);
+    const selectedService = servicesRes.data[0];
+    console.log(`   Serviço selecionado para teste: "${selectedService.name}" (ID: ${selectedService._id})`);
 
     // Limpa agendamentos e sessões anteriores do número de teste
     const testDate = '2026-11-04';
@@ -71,7 +71,7 @@ async function testAll() {
     // 4. Calcular Slots Livres
     console.log(`\n4️⃣ Testando Cálculo de Slots (/api/appointments/available-slots)...`);
     const slotsRes = await axios.get(
-      `${baseURL}/api/appointments/available-slots?date=${testDate}&serviceId=${dentalService._id}`,
+      `${baseURL}/api/appointments/available-slots?date=${testDate}&serviceId=${selectedService._id}`,
       { headers: authHeaders }
     );
     console.log(`   Slots disponíveis calculados:`, slotsRes.data.availableSlots.slice(0, 6), '...');
@@ -83,7 +83,7 @@ async function testAll() {
       {
         customerName: 'Gabriel Admin',
         customerPhone: '5511999990000',
-        serviceId: dentalService._id,
+        serviceId: selectedService._id,
         date: testDate,
         startTime: '09:00',
         origin: 'DASHBOARD',
@@ -93,6 +93,13 @@ async function testAll() {
     console.log('   Agendamento criado com sucesso: ID', appointmentRes.data._id);
     console.log(`   Intervalo agendado: ${appointmentRes.data.startTime} até ${appointmentRes.data.endTime}`);
 
+    // 5.1 Teste do Endpoint de Métricas do Estabelecimento
+    console.log('   -> Testando agregação de métricas (/api/appointments/metrics)...');
+    const metricsRes = await axios.get(`${baseURL}/api/appointments/metrics`, { headers: authHeaders });
+    console.log('      Faturamento Total:', `R$ ${metricsRes.data.financial.totalRevenue.toFixed(2)}`);
+    console.log('      Atendimentos Confirmados:', metricsRes.data.totals.confirmed);
+    console.log('      Taxa de Ocupação da Agenda:', `${metricsRes.data.efficiency.occupancyRate}%`);
+
     // 6. Teste de Concorrência e Conflito (Overlap / 409 Conflict)
     console.log('\n6️⃣ Testando Prevenção de Conflito de Horário (Overlap / 409 Conflict)...');
     try {
@@ -101,7 +108,7 @@ async function testAll() {
         {
           customerName: 'Cliente Concorrente',
           customerPhone: '5511988887777',
-          serviceId: dentalService._id,
+          serviceId: selectedService._id,
           date: testDate,
           startTime: '09:15',
           origin: 'WHATSAPP',
@@ -201,8 +208,8 @@ async function testAll() {
         interactive: {
           type: 'list_reply',
           list_reply: {
-            id: dentalService._id.toString(),
-            title: dentalService.name,
+            id: selectedService._id.toString(),
+            title: selectedService.name,
           },
         },
       })
@@ -290,11 +297,11 @@ async function testAll() {
     const { scheduleAppointmentReminder, cancelAppointmentReminder, reminderQueue } = require('./src/queues/reminderQueue');
     const futureAppointment = {
       _id: new mongoose.Types.ObjectId(),
-      customerName: 'Paciente Teste Lembrete',
+      customerName: 'Cliente Teste Lembrete',
       customerPhone: '5511999998888',
       startTime: new Date(Date.now() + 48 * 60 * 60 * 1000), // 48h no futuro
       date: '2026-11-09',
-      serviceId: { name: 'Consulta e Avaliação' },
+      serviceId: { name: 'Consulta / Avaliação Inicial' },
     };
     const reminderJob = await scheduleAppointmentReminder(futureAppointment);
     console.log(`   Lembrete agendado no BullMQ: ID "${reminderJob?.id}" (Dormindo no Redis)`);
