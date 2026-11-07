@@ -1,6 +1,8 @@
 const { Router } = require('express');
 const serviceController = require('../controllers/serviceController');
 const authMiddleware = require('../middlewares/authMiddleware');
+const { validate } = require('../middlewares/validate');
+const { createServiceSchema, updateServiceSchema } = require('../validators/service.validator');
 
 const router = Router();
 
@@ -8,9 +10,8 @@ const router = Router();
 router.use(authMiddleware);
 
 router.get('/', serviceController.list);
-router.post('/', serviceController.create);
-router.put('/:id', serviceController.update);
+router.post('/', validate(createServiceSchema), serviceController.create);
+router.put('/:id', validate(updateServiceSchema), serviceController.update);
 router.delete('/:id', serviceController.remove);
 
 module.exports = router;
-

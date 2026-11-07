@@ -1,6 +1,8 @@
 require('express-async-errors');
 const express = require('express');
 const cors = require('cors');
+const swaggerUi = require('swagger-ui-express');
+const swaggerDocument = require('../docs/swagger.json');
 const env = require('./config/env');
 const routes = require('./routes');
 const { errorHandler } = require('./middlewares/errorHandler');
@@ -17,6 +19,9 @@ app.use(
 
 // Parser de corpo JSON
 app.use(express.json());
+
+// Documentação Interativa da API (Swagger UI)
+app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 
 // Rota de Healthcheck simples
 app.get('/health', (req, res) => {

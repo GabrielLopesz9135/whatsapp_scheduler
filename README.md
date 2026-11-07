@@ -242,7 +242,13 @@ stateDiagram-v2
 
 ---
 
-## 📡 Especificação da API REST
+## 📡 Especificação da API REST & Documentação Interativa
+
+A API possui especificação formal OpenAPI 3.0 disponível em [`backend/docs/swagger.json`](backend/docs/swagger.json).
+
+* **Interface Local (Swagger UI):** Acesse `http://localhost:3333/api/docs` ao iniciar o servidor para testar todos os endpoints interativamente.
+* **Visualizador Online (Sem rodar local):** Você pode carregar o arquivo OpenAPI oficial no [Swagger Editor Online](https://editor.swagger.io/?url=https://raw.githubusercontent.com/GabrielLopesz9135/whatsapp_scheduler/main/backend/docs/swagger.json) para explorar os esquemas, parâmetros e payloads diretamente pelo navegador.
+* **Validação Estrita com Zod:** Todos os dados de entrada (`body`, `query` e `params`) são interceptados e validados pelo middleware [`validate.js`](backend/src/middlewares/validate.js). Payloads fora do padrão retornam `400 Bad Request` com detalhamento amigável dos campos incorretos.
 
 ### Autenticação (`/api/auth`)
 - `POST /api/auth/login`: Realiza login do administrador gerando Bearer Token JWT.

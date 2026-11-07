@@ -37,6 +37,23 @@ async function testAll() {
     console.log('   Token JWT obtido:', token ? 'Sim (válido)' : 'Não');
     const authHeaders = { Authorization: `Bearer ${token}` };
 
+    // 2.1 Validação de Schemas com Zod (Rejeição de dados inválidos)
+    console.log('   -> Testando validação Zod (rejeição de e-mail e senha fora das regras)...');
+    try {
+      await axios.post(`${baseURL}/api/auth/login`, {
+        email: 'email_sem_arroba',
+        password: '123', // Menor que 6 caracteres
+      });
+      console.error('❌ FALHA: Zod deveria ter rejeitado com status 400!');
+    } catch (zodErr) {
+      if (zodErr.response?.status === 400) {
+        console.log('   ✅ Sucesso! Zod bloqueou payload inválido com HTTP 400.');
+        console.log('      Erros detectados:', zodErr.response.data.details.map((d) => `${d.field}: ${d.message}`).join(' | '));
+      } else {
+        console.error('❌ Erro inesperado ao testar Zod:', zodErr.response?.status);
+      }
+    }
+
     // 3. Listar Serviços
     console.log('\n3️⃣ Testando Listagem de Serviços (/api/services)...');
     const servicesRes = await axios.get(`${baseURL}/api/services`, { headers: authHeaders });

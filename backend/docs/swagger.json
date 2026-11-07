@@ -1,0 +1,281 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "AutoScheduler API — Consultório Dra. Meyriellem Damasceno",
+    "description": "API RESTful corporativa para gestão de agendamentos em tempo real sincronizada via WebSockets com a Meta WhatsApp Cloud API.",
+    "version": "1.0.0",
+    "contact": {
+      "name": "Gabriel Lopes",
+      "url": "https://github.com/GabrielLopesz9135/whatsapp_scheduler"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:3333/api",
+      "description": "Servidor Local de Desenvolvimento"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Insira o token JWT retornado pelo endpoint /api/auth/login"
+      }
+    },
+    "schemas": {
+      "LoginRequest": {
+        "type": "object",
+        "required": ["email", "password"],
+        "properties": {
+          "email": { "type": "string", "format": "email", "example": "admin@scheduler.com" },
+          "password": { "type": "string", "format": "password", "example": "admin123" }
+        }
+      },
+      "LoginResponse": {
+        "type": "object",
+        "properties": {
+          "token": { "type": "string" },
+          "user": {
+            "type": "object",
+            "properties": {
+              "_id": { "type": "string" },
+              "name": { "type": "string" },
+              "email": { "type": "string" }
+            }
+          }
+        }
+      },
+      "Service": {
+        "type": "object",
+        "properties": {
+          "_id": { "type": "string" },
+          "name": { "type": "string", "example": "Profilaxia e Limpeza" },
+          "description": { "type": "string", "example": "Remoção de biofilme e polimento" },
+          "durationMinutes": { "type": "integer", "example": 30 },
+          "price": { "type": "number", "example": 150.0 },
+          "active": { "type": "boolean", "example": true }
+        }
+      },
+      "CreateAppointmentRequest": {
+        "type": "object",
+        "required": ["customerName", "customerPhone", "serviceId", "date", "startTime"],
+        "properties": {
+          "customerName": { "type": "string", "example": "Gabriel Lopes" },
+          "customerPhone": { "type": "string", "example": "5511999991234" },
+          "serviceId": { "type": "string", "example": "6aea954319c69f9f6df0573c" },
+          "date": { "type": "string", "format": "date", "example": "2026-11-10" },
+          "startTime": { "type": "string", "example": "09:00" },
+          "origin": { "type": "string", "enum": ["DASHBOARD", "WHATSAPP"], "default": "DASHBOARD" }
+        }
+      },
+      "Appointment": {
+        "type": "object",
+        "properties": {
+          "_id": { "type": "string" },
+          "customerName": { "type": "string" },
+          "customerPhone": { "type": "string" },
+          "serviceId": { "$ref": "#/components/schemas/Service" },
+          "date": { "type": "string" },
+          "startTime": { "type": "string", "format": "date-time" },
+          "endTime": { "type": "string", "format": "date-time" },
+          "status": { "type": "string", "enum": ["CONFIRMED", "CANCELLED", "COMPLETED"] },
+          "origin": { "type": "string", "enum": ["DASHBOARD", "WHATSAPP"] }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": { "type": "string" },
+          "details": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "field": { "type": "string" },
+                "message": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/auth/login": {
+      "post": {
+        "tags": ["Autenticação"],
+        "summary": "Login do administrador",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/LoginRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Token JWT gerado com sucesso",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LoginResponse" } } }
+          },
+          "400": { "description": "Dados inválidos rejeitados pelo Zod" },
+          "401": { "description": "Credenciais incorretas" }
+        }
+      }
+    },
+    "/services": {
+      "get": {
+        "tags": ["Procedimentos Odontológicos"],
+        "summary": "Lista todos os procedimentos cadastrados",
+        "security": [{ "BearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Lista de procedimentos",
+            "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Service" } } } }
+          }
+        }
+      },
+      "post": {
+        "tags": ["Procedimentos Odontológicos"],
+        "summary": "Cadastra um novo procedimento",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["name", "durationMinutes", "price"],
+                "properties": {
+                  "name": { "type": "string", "example": "Clareamento Consultório" },
+                  "description": { "type": "string" },
+                  "durationMinutes": { "type": "integer", "example": 60 },
+                  "price": { "type": "number", "example": 380.0 },
+                  "active": { "type": "boolean", "default": true }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Procedimento criado" },
+          "400": { "description": "Validação Zod falhou" }
+        }
+      }
+    },
+    "/appointments/available-slots": {
+      "get": {
+        "tags": ["Agendamentos & Motor de Slots"],
+        "summary": "Calcula horários livres para uma data e procedimento",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          { "name": "date", "in": "query", "required": true, "schema": { "type": "string", "format": "date", "example": "2026-11-10" } },
+          { "name": "serviceId", "in": "query", "required": true, "schema": { "type": "string", "example": "6aea954319c69f9f6df0573c" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Horários livres calculados pelo slotService",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "date": { "type": "string" },
+                    "serviceId": { "type": "string" },
+                    "availableSlots": { "type": "array", "items": { "type": "string", "example": "09:00" } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/appointments": {
+      "get": {
+        "tags": ["Agendamentos & Motor de Slots"],
+        "summary": "Lista agendamentos de uma data",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          { "name": "date", "in": "query", "required": false, "schema": { "type": "string", "example": "2026-11-04" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista de agendamentos",
+            "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Appointment" } } } }
+          }
+        }
+      },
+      "post": {
+        "tags": ["Agendamentos & Motor de Slots"],
+        "summary": "Cria agendamento manual via Dashboard com prevenção de concorrência",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateAppointmentRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Agendamento criado e emitido via WebSocket" },
+          "400": { "description": "Validação Zod falhou" },
+          "409": { "description": "Conflito de horário (Overlap / Race condition prevenida)" }
+        }
+      }
+    },
+    "/appointments/{id}/status": {
+      "patch": {
+        "tags": ["Agendamentos & Motor de Slots"],
+        "summary": "Atualiza status do agendamento (ex: CANCELLED)",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["status"],
+                "properties": {
+                  "status": { "type": "string", "enum": ["CONFIRMED", "CANCELLED", "COMPLETED"] }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Status atualizado e lembrete cancelado se CANCELLED" }
+        }
+      }
+    },
+    "/webhook/whatsapp": {
+      "get": {
+        "tags": ["Meta WhatsApp Cloud API"],
+        "summary": "Verificação de Handshake da Meta (hub.challenge)",
+        "parameters": [
+          { "name": "hub.mode", "in": "query", "schema": { "type": "string", "example": "subscribe" } },
+          { "name": "hub.verify_token", "in": "query", "schema": { "type": "string" } },
+          { "name": "hub.challenge", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Retorna o hub.challenge em texto puro" },
+          "403": { "description": "Token inválido" }
+        }
+      },
+      "post": {
+        "tags": ["Meta WhatsApp Cloud API"],
+        "summary": "Recepção de mensagens e enfileiramento no BullMQ/Redis",
+        "responses": {
+          "200": { "description": "EVENT_RECEIVED retornado em < 5ms" }
+        }
+      }
+    }
+  }
+}
+
