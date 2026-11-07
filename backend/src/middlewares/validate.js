@@ -23,6 +23,7 @@ function validate(schema, source = 'body') {
         return res.status(400).json({
           error: 'Falha na validação dos dados fornecidos.',
           details: formattedErrors,
+          correlationId: req.id,
         });
       }
       return next(error);

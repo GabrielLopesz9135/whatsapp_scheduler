@@ -5,6 +5,8 @@ const swaggerUi = require('swagger-ui-express');
 const swaggerDocument = require('../docs/swagger.json');
 const env = require('./config/env');
 const routes = require('./routes');
+const { correlationIdMiddleware } = require('./middlewares/correlationId');
+const httpLogger = require('./middlewares/httpLogger');
 const { errorHandler } = require('./middlewares/errorHandler');
 
 const app = express();
@@ -16,6 +18,10 @@ app.use(
     credentials: true,
   })
 );
+
+// Rastreamento de requisições ponta a ponta (Correlation ID) e Logging Estruturado (Pino)
+app.use(correlationIdMiddleware);
+app.use(httpLogger);
 
 // Parser de corpo JSON
 app.use(express.json());

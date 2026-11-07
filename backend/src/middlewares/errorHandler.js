@@ -1,3 +1,5 @@
+const logger = require('../config/logger');
+
 class AppError extends Error {
   constructor(message, statusCode = 400) {
     super(message);
@@ -32,36 +34,55 @@ class UnauthorizedError extends AppError {
 }
 
 /**
- * Middleware centralizado de tratamento de erros.
+ * Middleware centralizado de tratamento de erros com rastreabilidade por Correlation ID.
  */
 function errorHandler(err, req, res, next) {
-  // Erros customizados da aplicação
+  const correlationId = req.id;
+  const log = req.log || logger;
+
+  // Erros operacionais customizados da aplicação (AppError)
   if (err instanceof AppError) {
-    return res.status(err.statusCode).json({ error: err.message });
-  }
-
-  // Erros do Mongoose / MongoDB
-  if (err.name === 'ValidationError') {
-    const messages = Object.values(err.errors).map((e) => e.message);
-    return res.status(400).json({ error: 'Erro de validação', details: messages });
-  }
-
-  if (err.name === 'CastError') {
-    return res.status(400).json({ error: `Formato de ID inválido para o campo ${err.path}` });
-  }
-
-  // Erro de Chave Duplicada no MongoDB (ex: índice único de startTime para CONFIRMED)
-  if (err.code === 11000) {
-    return res.status(409).json({
-      error: 'Horário acabou de ser preenchido por outro cliente (Conflito no banco de dados)',
+    log.warn({ err: err.message, statusCode: err.statusCode, correlationId }, `[AppError] ${err.message}`);
+    return res.status(err.statusCode).json({
+      error: err.message,
+      correlationId,
     });
   }
 
-  // Log de erros não previstos
-  console.error('💥 [Unhandled Error]:', err);
+  // Erros de validação do Mongoose
+  if (err.name === 'ValidationError') {
+    const messages = Object.values(err.errors).map((e) => e.message);
+    log.warn({ details: messages, correlationId }, '[Mongoose ValidationError]');
+    return res.status(400).json({
+      error: 'Erro de validação',
+      details: messages,
+      correlationId,
+    });
+  }
+
+  if (err.name === 'CastError') {
+    log.warn({ path: err.path, correlationId }, '[Mongoose CastError]');
+    return res.status(400).json({
+      error: `Formato de ID inválido para o campo ${err.path}`,
+      correlationId,
+    });
+  }
+
+  // Erro de Chave Duplicada no MongoDB (índice único de colisão temporal)
+  if (err.code === 11000) {
+    log.warn({ correlationId }, '[MongoDB DuplicateKey]');
+    return res.status(409).json({
+      error: 'Horário acabou de ser preenchido por outro cliente (Conflito no banco de dados)',
+      correlationId,
+    });
+  }
+
+  // Erro inesperado 500 (Unhandled Error)
+  log.error({ err, correlationId }, '💥 [Unhandled Error] Falha interna não tratada');
 
   return res.status(500).json({
     error: 'Ocorreu um erro interno no servidor',
+    correlationId,
     message: process.env.NODE_ENV === 'development' ? err.message : undefined,
   });
 }
@@ -74,4 +95,3 @@ module.exports = {
   BadRequestError,
   UnauthorizedError,
 };
-

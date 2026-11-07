@@ -25,6 +25,7 @@ async function testAll() {
     console.log('1️⃣ Testando Healthcheck...');
     const healthRes = await axios.get(`${baseURL}/health`);
     console.log('   Status:', healthRes.status, healthRes.data);
+    console.log('   Rastreabilidade (x-correlation-id):', healthRes.headers['x-correlation-id'] || 'Não retornado');
 
     // 2. Login Admin
     console.log('\n2️⃣ Testando Autenticação (/api/auth/login)...');

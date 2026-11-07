@@ -1,6 +1,7 @@
 const http = require('http');
 const app = require('./app');
 const env = require('./config/env');
+const logger = require('./config/logger');
 const { connectDatabase, disconnectDatabase } = require('./config/database');
 const { initSocket } = require('./config/socket');
 const { initWhatsAppWorker, closeWhatsAppWorker } = require('./workers/whatsappWorker');
@@ -23,17 +24,17 @@ async function bootstrap() {
 
     // 5. Inicia a escuta na porta configurada
     server.listen(env.PORT, () => {
-      console.log(`🚀 [Server] Servidor rodando na porta ${env.PORT} em modo ${env.NODE_ENV}`);
-      console.log(`🌐 [Server] API: http://localhost:${env.PORT}/api`);
-      console.log(`⚡ [Server] WebSocket pronto para conexões.`);
-      console.log(`📬 [Server] Fila BullMQ/Redis ativa para webhooks.`);
+      logger.info(`🚀 [Server] Servidor rodando na porta ${env.PORT} em modo ${env.NODE_ENV}`);
+      logger.info(`🌐 [Server] API: http://localhost:${env.PORT}/api | Swagger: http://localhost:${env.PORT}/api/docs`);
+      logger.info(`⚡ [Server] WebSocket pronto para conexões.`);
+      logger.info(`📬 [Server] Filas BullMQ/Redis ativas para webhooks e lembretes.`);
     });
 
     // Tratamento de desligamento gracioso (Graceful Shutdown)
     const gracefulShutdown = async (signal) => {
-      console.log(`\n🛑 [Server] Recebido sinal ${signal}. Encerrando aplicação graciosamente...`);
+      logger.info(`🛑 [Server] Recebido sinal ${signal}. Encerrando aplicação graciosamente...`);
       server.close(async () => {
-        console.log('🔒 [Server] Servidor HTTP fechado.');
+        logger.info('🔒 [Server] Servidor HTTP fechado.');
         await closeWhatsAppWorker();
         await closeReminderWorker();
         await disconnectDatabase();
@@ -44,7 +45,7 @@ async function bootstrap() {
     process.on('SIGINT', () => gracefulShutdown('SIGINT'));
     process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
   } catch (error) {
-    console.error('💥 [Server] Falha fatal ao inicializar aplicação:', error);
+    logger.error({ error }, '💥 [Server] Falha fatal ao inicializar aplicação');
     process.exit(1);
   }
 }

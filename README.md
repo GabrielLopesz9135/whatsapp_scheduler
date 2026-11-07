@@ -10,6 +10,9 @@
 ![MongoDB](https://img.shields.io/badge/MongoDB-7.0-47A248?style=for-the-badge&logo=mongodb&logoColor=white)
 ![Redis](https://img.shields.io/badge/Redis-7.0-DC382D?style=for-the-badge&logo=redis&logoColor=white)
 ![BullMQ](https://img.shields.io/badge/BullMQ-6.x-E34F26?style=for-the-badge&logo=activemq&logoColor=white)
+![Zod](https://img.shields.io/badge/Zod-3.x-3E67B1?style=for-the-badge&logo=zod&logoColor=white)
+![Pino](https://img.shields.io/badge/Pino-10.x-68A063?style=for-the-badge&logo=node.js&logoColor=white)
+![OpenAPI](https://img.shields.io/badge/OpenAPI-3.0-6BA539?style=for-the-badge&logo=openapiinitiative&logoColor=white)
 ![Socket.io](https://img.shields.io/badge/Socket.io-4.8-010101?style=for-the-badge&logo=socketdotio&logoColor=white)
 ![WhatsApp Cloud API](https://img.shields.io/badge/Meta_WhatsApp_Cloud_API-v21.0-25D366?style=for-the-badge&logo=whatsapp&logoColor=white)
 ![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3.4-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white)
@@ -118,6 +121,10 @@ Para suportar cenários reais com milhares de mensagens simultâneas e evitar so
 - **Retentativas com Backoff Exponencial:** Se o banco de dados oscilar durante uma transação, o BullMQ retenta automaticamente o processamento da mensagem até 3 vezes (com intervalos de 1s, 2s e 4s) antes de mover para a *Dead-Letter Queue* (DLQ).
 - **Concorrência Controlada:** O worker processa os jobs com concorrência limitada (`concurrency: 5`), impedindo esgotamento de conexões no MongoDB.
 - **Fallback de Alta Disponibilidade:** Caso o Redis esteja temporariamente em manutenção, o sistema executa automaticamente um fallback gracioso em memória (`setImmediate`), garantindo que o bot nunca pare de responder.
+
+### 6. Observabilidade, Logs Estruturados e Rastreamento (Pino + Correlation IDs)
+- **Logging Estruturado em JSON:** Utilização do **Pino**, o logger mais veloz do ecossistema Node.js, com overhead de CPU quase nulo. Em produção, os logs são emitidos em JSON estruturado com timestamps ISO e métricas de tempo de resposta (`responseTime`).
+- **Rastreabilidade Ponta a Ponta (*Correlation ID*):** Cada requisição HTTP recebe um UUID único (`x-correlation-id`) gerado ou preservado de gateways de borda. Esse identificador acompanha toda a execução da requisição através de child loggers e é devolvido nos cabeçalhos de resposta e nos payloads de erro (`4xx`/`5xx`), permitindo isolar a causa raiz de qualquer falha em sistemas como Datadog, Grafana Loki ou AWS CloudWatch.
 
 ---
 
