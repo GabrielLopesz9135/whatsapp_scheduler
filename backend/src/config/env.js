@@ -14,6 +14,9 @@ const env = {
   WHATSAPP_API_TOKEN: process.env.WHATSAPP_API_TOKEN || '',
   WHATSAPP_PHONE_NUMBER_ID: process.env.WHATSAPP_PHONE_NUMBER_ID || '',
   WHATSAPP_VERIFY_TOKEN: process.env.WHATSAPP_VERIFY_TOKEN || 'meu_token_secreto_webhook_123',
+  REDIS_HOST: process.env.REDIS_HOST || '127.0.0.1',
+  REDIS_PORT: parseInt(process.env.REDIS_PORT, 10) || 6379,
+  REDIS_PASSWORD: process.env.REDIS_PASSWORD || undefined,
 };
 
 // Validação em produção para variáveis críticas

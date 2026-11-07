@@ -1,5 +1,6 @@
 const env = require('../config/env');
 const botFlowService = require('../services/botFlowService');
+const { addIncomingMessageJob } = require('../queues/whatsappQueue');
 
 /**
  * Validação do Webhook oficial da Meta (GET).
@@ -21,24 +22,28 @@ function verifyWebhook(req, res) {
 
 /**
  * Recebe notificações de mensagens e status da Meta (POST).
- * Retorna status 200 imediatamente para a Meta e processa a lógica de negócio assincronamente.
+ * Retorna status 200 imediatamente para a Meta e delega o processamento para a fila persistente Redis (BullMQ).
  */
-function handleWebhook(req, res) {
-  // Resposta imediata 200 OK para evitar retentativas agressivas da Meta
+async function handleWebhook(req, res) {
+  // 1. Resposta imediata 200 OK para evitar timeout da Meta (requisito oficial: resposta em < 5 segundos)
   res.status(200).send('EVENT_RECEIVED');
 
-  // Processamento assíncrono isolado da máquina de estados do bot
-  setImmediate(async () => {
-    try {
-      await botFlowService.handleIncomingMessage(req.body);
-    } catch (error) {
-      console.error('💥 [Webhook Meta] Falha ao processar mensagem assíncrona:', error);
-    }
-  });
+  // 2. Ingestão na fila persistente do Redis via BullMQ com fallback de alta disponibilidade
+  try {
+    await addIncomingMessageJob(req.body);
+  } catch (queueError) {
+    console.warn('⚠️ [Webhook Meta] Falha ao enfileirar no Redis. Executando fallback em memória:', queueError.message);
+    setImmediate(async () => {
+      try {
+        await botFlowService.handleIncomingMessage(req.body);
+      } catch (err) {
+        console.error('💥 [Webhook Meta] Falha no processamento por fallback:', err);
+      }
+    });
+  }
 }
 
 module.exports = {
   verifyWebhook,
   handleWebhook,
 };
-

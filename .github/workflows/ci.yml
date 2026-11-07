@@ -22,7 +22,7 @@ jobs:
           cache: 'npm'
           cache-dependency-path: backend/package-lock.json
 
-      - name: Start MongoDB Replica Set (Docker Compose)
+      - name: Start MongoDB & Redis (Docker Compose)
         run: docker compose up -d --wait
 
       - name: Install Backend Dependencies
@@ -40,6 +40,8 @@ jobs:
           WHATSAPP_PHONE_NUMBER_ID: 1434118393114940
           WHATSAPP_API_TOKEN: test_ci_token
           WHATSAPP_VERIFY_TOKEN: meu_token_secreto_webhook_123
+          REDIS_HOST: 127.0.0.1
+          REDIS_PORT: 6379
 
       - name: Run Integration Tests
         run: |
@@ -51,6 +53,8 @@ jobs:
           WHATSAPP_PHONE_NUMBER_ID: 1434118393114940
           WHATSAPP_API_TOKEN: test_ci_token
           WHATSAPP_VERIFY_TOKEN: meu_token_secreto_webhook_123
+          REDIS_HOST: 127.0.0.1
+          REDIS_PORT: 6379
 
   frontend:
     name: Frontend Build (Vite)

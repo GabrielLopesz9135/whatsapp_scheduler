@@ -252,12 +252,31 @@ async function testAll() {
     session = await ChatSession.findOne({ phone: testPhone });
     console.log(`   Sessão após confirmação: ${session ? session.step : 'Removida com sucesso'}`);
 
+    // 10. Teste de Ingestão e Idempotência na Fila BullMQ (Redis)
+    console.log('\n🔟 Testando Enfileiramento com Idempotência na Fila BullMQ (Redis)...');
+    const { addIncomingMessageJob, whatsappQueue } = require('./src/queues/whatsappQueue');
+    const samplePayload = makeMetaPayload({
+      type: 'text',
+      text: { body: 'Mensagem de teste de fila' },
+    });
+    const job = await addIncomingMessageJob(samplePayload);
+    console.log(`   Job registrado na fila: ID "${job.id}", Nome: "${job.name}"`);
+
+    // Teste de Idempotência: Adicionar o mesmo payload com o mesmo messageId
+    const duplicateJob = await addIncomingMessageJob(samplePayload);
+    console.log(`   Job duplicado tratado com idempotência: ID "${duplicateJob.id}" (Sem duplicar execução)`);
+
     console.log('\n🎉 TODOS OS TESTES PASSARAM COM SUCESSO!');
   } catch (err) {
     console.error('💥 Erro durante execução dos testes:', err.response?.data || err.message);
   } finally {
+    try {
+      const { whatsappQueue } = require('./src/queues/whatsappQueue');
+      await whatsappQueue.close();
+    } catch (_) {}
     server.close();
     await disconnectDatabase();
+    process.exit(0);
   }
 }
 

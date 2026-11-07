@@ -8,6 +8,8 @@
 ![Vue.js](https://img.shields.io/badge/Vue.js-3.5-4FC08D?style=for-the-badge&logo=vuedotjs&logoColor=white)
 ![Vite](https://img.shields.io/badge/Vite-6.x-646CFF?style=for-the-badge&logo=vite&logoColor=white)
 ![MongoDB](https://img.shields.io/badge/MongoDB-7.0-47A248?style=for-the-badge&logo=mongodb&logoColor=white)
+![Redis](https://img.shields.io/badge/Redis-7.0-DC382D?style=for-the-badge&logo=redis&logoColor=white)
+![BullMQ](https://img.shields.io/badge/BullMQ-6.x-E34F26?style=for-the-badge&logo=activemq&logoColor=white)
 ![Socket.io](https://img.shields.io/badge/Socket.io-4.8-010101?style=for-the-badge&logo=socketdotio&logoColor=white)
 ![WhatsApp Cloud API](https://img.shields.io/badge/Meta_WhatsApp_Cloud_API-v21.0-25D366?style=for-the-badge&logo=whatsapp&logoColor=white)
 ![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3.4-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white)
@@ -109,6 +111,14 @@ Diferente de sistemas engessados com horários fixos de 1 em 1 hora, o motor cal
 - Ao concluir um agendamento (via WhatsApp ou Dashboard) ou cancelar uma consulta, o servidor emite eventos `appointment:created` e `appointment:cancelled`.
 - O cliente Socket.io no Vue 3 intercepta os eventos, insere/atualiza o estado na store do Pinia reativamente e dispara um *Toast Notification* sonoro/visual para o operador da recepção.
 
+### 5. Filas Assíncronas, Resiliência e Idempotência (Redis + BullMQ)
+Para suportar cenários reais com milhares de mensagens simultâneas e evitar sobrecarga na thread do Node.js:
+- **Padrão Producer-Consumer Desacoplado:** O controller do Webhook responde `200 OK` para a Meta em menos de 5ms e insere o payload em uma fila persistente no **Redis** (`whatsapp-incoming`).
+- **Idempotência Automática:** Utiliza o identificador exclusivo da mensagem da Meta (`wamid`) como `jobId` no BullMQ (`meta-msg-{wamid}`). Se a Meta reenviar o mesmo evento devido a instabilidade de rede, a duplicata é descartada imediatamente pelo Redis.
+- **Retentativas com Backoff Exponencial:** Se o banco de dados oscilar durante uma transação, o BullMQ retenta automaticamente o processamento da mensagem até 3 vezes (com intervalos de 1s, 2s e 4s) antes de mover para a *Dead-Letter Queue* (DLQ).
+- **Concorrência Controlada:** O worker processa os jobs com concorrência limitada (`concurrency: 5`), impedindo esgotamento de conexões no MongoDB.
+- **Fallback de Alta Disponibilidade:** Caso o Redis esteja temporariamente em manutenção, o sistema executa automaticamente um fallback gracioso em memória (`setImmediate`), garantindo que o bot nunca pare de responder.
+
 ---
 
 ## 🤖 Máquina de Estados do WhatsApp (FSM)
@@ -149,6 +159,7 @@ stateDiagram-v2
 | **Node.js** | 20.x LTS | Runtime JavaScript assíncrono de alto desempenho |
 | **Express.js** | 4.22.x | Framework RESTful robusto e flexível |
 | **MongoDB & Mongoose** | 7.0 / 9.11.x | Banco NoSQL com ODM, tipagem estrita e suporte a Transações ACID |
+| **Redis & BullMQ** | 7.0 / 6.x | Sistema distribuído de filas assíncronas, retentativas e idempotência |
 | **Socket.io** | 4.8.x | Comunicação full-duplex bidirecional em tempo real para WebSockets |
 | **Axios** | 1.21.x | Cliente HTTP com suporte a interceptores para Graph API da Meta |
 | **JSON Web Token (JWT)** | 9.0.x | Autenticação stateless segura para a API administrativa |
