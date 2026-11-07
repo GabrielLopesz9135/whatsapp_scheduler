@@ -2,6 +2,7 @@
 
 <div align="center">
 
+[![CI/CD Pipeline](https://github.com/GabrielLopesz9135/whatsapp_scheduler/actions/workflows/ci.yml/badge.svg)](https://github.com/GabrielLopesz9135/whatsapp_scheduler/actions/workflows/ci.yml)
 ![Vue.js](https://img.shields.io/badge/Vue.js-3.5-4FC08D?style=for-the-badge&logo=vuedotjs&logoColor=white)
 ![Vite](https://img.shields.io/badge/Vite-6.x-646CFF?style=for-the-badge&logo=vite&logoColor=white)
 ![Pinia](https://img.shields.io/badge/Pinia-4.1-FFD859?style=for-the-badge&logo=vuedotjs&logoColor=black)
